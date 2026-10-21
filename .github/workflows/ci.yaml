@@ -34,12 +34,17 @@ jobs:
       - name: Vet
         run: make vet
 
-      # Pinned, not `latest`: action v6 resolves `latest` to golangci-lint v1.x,
-      # which is built with an older Go than this module targets and cannot read a
-      # version "2" config. Keep this in step with the locally verified version.
+      # Built from source with the runner's Go rather than downloaded as a binary.
+      # A prebuilt linter can only decode stdlib export data from the Go release it
+      # was built with, so a patch bump to the toolchain breaks a pinned binary
+      # ("export data version 5 is greater than maximum supported version 4").
+      # Compiling it here keeps the linter and the code on one toolchain.
+      #
+      # Version stays pinned, not `latest`: linter upgrades should be deliberate.
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.13.1
+          install-mode: goinstall
 
       - name: Verify go.mod is tidy
         run: |
