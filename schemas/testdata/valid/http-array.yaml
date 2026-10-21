@@ -1,0 +1,36 @@
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+metadata:
+  name: worker-metrics
+sources:
+  api:
+    type: http
+    base_url: https://app.internal:8443
+    timeout: 5s
+    max_response_bytes: 1048576
+    authentication:
+      type: basic
+      username: metrics
+      password:
+        env: APP_API_PASSWORD
+metrics:
+  - name: app_worker_tasks_active
+    help: Active tasks per worker
+    type: gauge
+    source: api
+    request:
+      method: GET
+      path: /api/workers
+    mapping:
+      rows: "$.workers[*]"
+      value: "$.active_tasks"
+      labels:
+        worker: "$.name"
+      static_labels:
+        tier: primary
+      null: omit
+    collect:
+      mode: poll
+      interval: 15s
+    failure:
+      mode: drop
