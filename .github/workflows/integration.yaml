@@ -1,0 +1,57 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Catches upstream base-image changes that PRs would not.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+# Datastore integration jobs land in M1 alongside the adapters that need them.
+# Agents 4-6 add a job per adapter running `make test-integration` against real
+# PostgreSQL and SQLite instances: §22 rule 9 forbids substituting mocks where
+# actual datastore behavior is under test. There is deliberately no placeholder
+# job here, because a green job that runs no tests misreports coverage.
+jobs:
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t metricule:ci .
+
+      # §14.1 requires non-root execution with no privileged mode.
+      - name: Verify the image is configured non-root
+        run: |
+          configured=$(docker image inspect metricule:ci --format '{{.Config.User}}')
+          echo "configured user: $configured"
+          test "$configured" = "65532:65532"
+
+      - name: Verify the entrypoint runs
+        run: docker run --rm metricule:ci version
+
+      - name: Verify the image serves its own schema
+        run: docker run --rm metricule:ci config schema | head -5
+
+      # A read-only root filesystem with all capabilities dropped is the documented
+      # deployment posture (§16), so it is exercised rather than only described.
+      - name: Verify it runs read-only with no capabilities
+        run: |
+          docker run --rm \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            metricule:ci version
