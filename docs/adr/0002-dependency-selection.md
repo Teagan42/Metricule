@@ -23,6 +23,11 @@ conflict in `go.mod` and, worse, divergent behavior between packages.
 | JSON Schema validation | `github.com/santhosh-tekuri/jsonschema/v6` | v6.0.3 |
 | JSON selectors | `github.com/theory/jsonpath` | v0.12.2 |
 
+**This table is the authoritative pin, not `go.mod`.** `pgx` and `modernc.org/sqlite`
+have no importer until the M1 adapters land, and `go mod tidy` — enforced in CI —
+removes requires that nothing imports. Agents 4 and 5 must `go get` the exact versions
+above when adding their adapters rather than resolving to whatever is current.
+
 Used from the standard library instead of a dependency:
 
 - **CLI parsing**: `flag`. See ADR 0006.
