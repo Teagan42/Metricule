@@ -1,0 +1,152 @@
+# Reference configuration from HANDOFF.md §5.1.
+#
+# Exercised by TestReferenceExampleParses. Keep this file and the specification
+# example identical: it is the contract both agents and users read.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: example-app
+  description: Application metrics exporter
+
+server:
+  listen: "0.0.0.0:9108"
+  metrics_path: /metrics
+  health_path: /healthz
+  readiness_path: /readyz
+
+defaults:
+  collection:
+    interval: 30s
+    timeout: 10s
+    reconcile_interval: 5m
+    debounce: 250ms
+  limits:
+    max_series_per_metric: 1000
+    max_rows_per_query: 10000
+    max_concurrent_collections: 4
+
+sources:
+  appdb:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+    pool:
+      max_open: 4
+      max_idle: 2
+    query_timeout: 10s
+
+  localdb:
+    type: sqlite
+    path: /data/app.db
+    readonly: true
+    busy_timeout: 3s
+    change_check_interval: 2s
+
+  appapi:
+    type: http
+    base_url: http://app:8080
+    timeout: 5s
+    authentication:
+      type: bearer
+      token:
+        file: /run/secrets/app_api_token
+    allowed_paths:
+      - /api/status
+      - /api/health
+
+metrics:
+  - name: app_jobs_pending
+    help: Jobs currently awaiting processing
+    type: gauge
+    source: appdb
+
+    query:
+      sql: |
+        SELECT COUNT(*) AS value
+        FROM jobs
+        WHERE status = 'pending'
+
+    mapping:
+      value: value
+
+    collect:
+      mode: poll
+      interval: 30s
+
+  - name: app_jobs_by_status
+    help: Current job count by status
+    type: gauge
+    source: appdb
+
+    query:
+      sql: |
+        SELECT status, COUNT(*) AS value
+        FROM jobs
+        GROUP BY status
+
+    mapping:
+      value: value
+      labels:
+        status: status
+
+    collect:
+      mode: notify
+      channel: metricule_jobs_changed
+      fallback_interval: 60s
+      debounce: 250ms
+
+  - name: app_users_total
+    help: Current user population
+    type: gauge
+    source: localdb
+
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+
+    mapping:
+      value: value
+
+    collect:
+      mode: auto
+      watch:
+        tables:
+          - users
+      fallback_interval: 60s
+
+  - name: app_active_sessions
+    help: Currently active application sessions
+    type: gauge
+    source: appapi
+
+    request:
+      method: GET
+      path: /api/status
+
+    mapping:
+      value: "$.sessions.active"
+
+    collect:
+      mode: poll
+      interval: 15s
+
+  - name: app_service_state
+    help: Current service operating state
+    type: state_set
+    source: appapi
+
+    request:
+      method: GET
+      path: /api/status
+
+    mapping:
+      value: "$.state"
+      states:
+        - starting
+        - running
+        - degraded
+        - stopped
+
+    collect:
+      mode: poll
+      interval: 15s
