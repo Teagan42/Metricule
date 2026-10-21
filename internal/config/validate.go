@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
@@ -384,7 +385,7 @@ func validateModeAgainstCapabilities(v *collector, path string, m *Metric, st So
 }
 
 func validateRequest(v *collector, path string, r *Request, h *HTTPSource) {
-	if r.Method != "" && r.Method != "GET" {
+	if r.Method != "" && r.Method != http.MethodGet {
 		v.errorf(path+".method", "only GET is supported in v0.1, got %q", r.Method)
 	}
 	if r.Path == "" {

@@ -13,6 +13,7 @@ import "time"
 // type (§5.1).
 type Type string
 
+// Wire types emitted in v0.1. Histograms and summaries are deferred (§8.5).
 const (
 	TypeGauge   Type = "gauge"
 	TypeCounter Type = "counter"

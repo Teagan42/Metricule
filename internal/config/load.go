@@ -16,7 +16,8 @@ import (
 //
 // Returns diagnostics even when err is nil, so callers can surface warnings.
 func Load(path string) (*Config, Diagnostics, error) {
-	data, err := os.ReadFile(path)
+	// The operator chooses this path on the command line; reading it is the point.
+	data, err := os.ReadFile(path) //nolint:gosec // operator-supplied config path
 	if err != nil {
 		return nil, nil, fmt.Errorf("read config %q: %w", path, err)
 	}

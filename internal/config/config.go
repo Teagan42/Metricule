@@ -213,6 +213,7 @@ type Watch struct {
 // SourceType identifies an adapter. AD-008 fixes the v0.1 set.
 type SourceType string
 
+// Supported source types.
 const (
 	SourcePostgres SourceType = "postgres"
 	SourceSQLite   SourceType = "sqlite"
@@ -299,6 +300,7 @@ type HTTPSource struct {
 // AuthType selects an HTTP authentication scheme.
 type AuthType string
 
+// Supported HTTP authentication schemes.
 const (
 	AuthBearer AuthType = "bearer"
 	AuthBasic  AuthType = "basic"

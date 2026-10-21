@@ -35,8 +35,8 @@ func compileSchema(t *testing.T) *jsonschema.Schema {
 		t.Fatalf("schema is not valid JSON: %v", err)
 	}
 	c := jsonschema.NewCompiler()
-	if err := c.AddResource("v1alpha1.schema.json", doc); err != nil {
-		t.Fatalf("add schema resource: %v", err)
+	if addErr := c.AddResource("v1alpha1.schema.json", doc); addErr != nil {
+		t.Fatalf("add schema resource: %v", addErr)
 	}
 	sch, err := c.Compile("v1alpha1.schema.json")
 	if err != nil {

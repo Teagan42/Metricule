@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,22 +47,14 @@ func run(t *testing.T, args ...string) result {
 	err := cmd.Run()
 
 	code := 0
-	var exitErr *exec.ExitError
 	if err != nil {
-		if ok := asExitError(err, &exitErr); !ok {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
 			t.Fatalf("run %v: %v", args, err)
 		}
 		code = exitErr.ExitCode()
 	}
 	return result{stdout: out.String(), stderr: errb.String(), code: code}
-}
-
-func asExitError(err error, target **exec.ExitError) bool {
-	e, ok := err.(*exec.ExitError)
-	if ok {
-		*target = e
-	}
-	return ok
 }
 
 func TestVersionSucceeds(t *testing.T) {

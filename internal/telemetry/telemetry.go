@@ -23,6 +23,7 @@ const Namespace = "metricule"
 // Reason labels a failure. Closed set: free-text errors belong in logs (§13).
 type Reason string
 
+// Failure reasons. Extend deliberately: each value is a label dimension.
 const (
 	ReasonTimeout         Reason = "timeout"
 	ReasonConnection      Reason = "connection"
@@ -41,6 +42,7 @@ const (
 // Trigger labels what caused a refresh.
 type Trigger string
 
+// Refresh triggers.
 const (
 	TriggerStartup   Trigger = "startup"
 	TriggerSchedule  Trigger = "schedule"
