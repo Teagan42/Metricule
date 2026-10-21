@@ -65,20 +65,31 @@ shared contracts owned by Agent 0.
 
 ## Package dependency direction
 
-Imports flow one way. Adding an edge not listed here requires Agent 0 review.
+Imports flow one way. `A -> B` means A imports B. Adding an edge not listed here
+requires Agent 0 review.
 
 ```text
-config  <- source, collect, mapping, exporter, runtime
-secrets <- config
-source  <- source/{postgres,sqlite,httpjson}, collect, triggers
-snapshot <- mapping, exporter, collect
-collect <- runtime
-mapping <- collect
-telemetry <- everything
+config    -> secrets, source, selector
+source    -> (nothing internal)
+source/*  -> source, config, selector, telemetry
+collect   -> config, source, snapshot, telemetry
+mapping   -> config, snapshot, selector, telemetry
+snapshot  -> (nothing internal)
+exporter  -> config, snapshot, telemetry
+runtime   -> config, source, collect, mapping, snapshot, telemetry
+telemetry -> version
 ```
 
-Adapters MUST NOT import each other. `internal/collect` and `internal/mapping` MUST NOT
-import any `internal/source/*` subpackage.
+Three rules make this checkable:
+
+1. **`internal/source` imports no other internal package.** Adapter settings are
+   plain types with no config or secrets dependency, so `config` can import `source`
+   for capability checks without a cycle. Reversing this edge breaks the build.
+2. **Adapters never import each other.** `internal/collect` and `internal/mapping`
+   never import any `internal/source/*` subpackage either; they see only the
+   interfaces in `internal/source` (P7).
+3. **Only `internal/runtime` resolves secrets.** Adapters receive resolved values.
+   An adapter importing `internal/secrets` is a defect.
 
 ## Pull request requirements
 
