@@ -1,0 +1,7 @@
+/dist/
+/bin/
+/metricule
+*.test
+coverage.out
+coverage.html
+.DS_Store
