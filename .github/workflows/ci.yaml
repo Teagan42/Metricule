@@ -34,17 +34,17 @@ jobs:
       - name: Vet
         run: make vet
 
-      # Built from source with the runner's Go rather than downloaded as a binary.
-      # A prebuilt linter can only decode stdlib export data from the Go release it
-      # was built with, so a patch bump to the toolchain breaks a pinned binary
-      # ("export data version 5 is greater than maximum supported version 4").
-      # Compiling it here keeps the linter and the code on one toolchain.
+      # Pinned, not `latest`: action v6 resolves `latest` to golangci-lint v1.x,
+      # which cannot read a version "2" config.
       #
-      # Version stays pinned, not `latest`: linter upgrades should be deliberate.
+      # v2.15.0 is the floor for Go 1.27.3. The linter's vendored x/tools decodes
+      # stdlib export data, and that ceiling moves with x/tools, not with the Go
+      # used to build the linter: v0.49.0 (golangci-lint v2.13.1) knows pkgbits
+      # V0-V4, while Go 1.27.3 emits V5. v2.15.0 vendors x/tools v0.52.0, which
+      # added V5. Bump this pin before bumping GO_VERSION.
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.13.1
-          install-mode: goinstall
+          version: v2.15.0
 
       - name: Verify go.mod is tidy
         run: |
