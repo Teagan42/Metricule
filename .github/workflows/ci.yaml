@@ -34,9 +34,12 @@ jobs:
       - name: Vet
         run: make vet
 
-      - uses: golangci/golangci-lint-action@v6
+      # Pinned, not `latest`: action v6 resolves `latest` to golangci-lint v1.x,
+      # which is built with an older Go than this module targets and cannot read a
+      # version "2" config. Keep this in step with the locally verified version.
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.13.1
 
       - name: Verify go.mod is tidy
         run: |
