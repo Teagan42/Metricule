@@ -9,8 +9,11 @@ package exporter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,6 +69,7 @@ type Server struct {
 	opts   Options
 	mux    *http.ServeMux
 	logger *slog.Logger
+	addr   atomic.Pointer[string]
 }
 
 // New registers the snapshot collector and builds the routes.
@@ -103,15 +107,32 @@ const (
 	shutdownGrace     = 5 * time.Second
 )
 
+// Addr returns the bound listen address, or "" before the server is listening.
+//
+// Needed because a configured port of 0 is only resolved by the kernel.
+func (s *Server) Addr() string {
+	if a := s.addr.Load(); a != nil {
+		return *a
+	}
+	return ""
+}
+
 // ListenAndServe serves until ctx is done, then shuts down gracefully.
 func (s *Server) ListenAndServe(ctx context.Context) error {
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", s.opts.Server.Listen)
+	if err != nil {
+		return fmt.Errorf("exporter: listen on %q: %w", s.opts.Server.Listen, err)
+	}
+	addr := ln.Addr().String()
+	s.addr.Store(&addr)
+
 	srv := &http.Server{
-		Addr:              s.opts.Server.Listen,
 		Handler:           s.mux,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	done := make(chan error, 1)
-	go func() { done <- srv.ListenAndServe() }()
+	go func() { done <- srv.Serve(ln) }()
 
 	select {
 	case err := <-done:
