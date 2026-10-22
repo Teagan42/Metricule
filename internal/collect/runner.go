@@ -44,9 +44,6 @@ type schedule struct {
 	retry     time.Time
 	// attempt counts consecutive failures since the last success.
 	attempt int
-	// retryTrigger carries the trigger that failed, so a retry reports why the
-	// refresh was wanted rather than attributing every retry to the schedule.
-	retryTrigger telemetry.Trigger
 
 	// debounce is the trailing edge of the current invalidation burst, and maxDelay
 	// is the hard deadline measured from the burst's first event.
@@ -68,7 +65,7 @@ func (s *schedule) next() (time.Time, telemetry.Trigger) {
 	}
 	consider(s.interval, telemetry.TriggerSchedule)
 	consider(s.reconcile, telemetry.TriggerReconcile)
-	consider(s.retry, s.retryTrigger)
+	consider(s.retry, telemetry.TriggerRetry)
 	consider(s.debounce, s.trigger)
 	consider(s.maxDelay, s.trigger)
 	return at, trigger
@@ -141,7 +138,6 @@ func (r *runner) refreshAndReschedule(ctx context.Context, trigger telemetry.Tri
 		sc.attempt++
 		if sc.attempt < r.sched.opts.Retry.MaxAttempts {
 			sc.retry = now.Add(r.sched.opts.Retry.Delay(sc.attempt))
-			sc.retryTrigger = trigger
 		} else {
 			// Attempts are bounded: fall back to the plan's schedule rather than
 			// retrying a dead source forever.
