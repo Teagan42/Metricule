@@ -2,6 +2,7 @@ package collect_test
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ func testOptions(t *testing.T) (collect.Options, *snapshot.MemoryStore) {
 	return collect.Options{
 		Store:   store,
 		Metrics: telemetry.New(prometheus.NewRegistry(), version.Info{}),
+		Logger:  slog.New(slog.DiscardHandler),
 		Retry: collect.RetryPolicy{
 			MaxAttempts: 3,
 			Base:        time.Millisecond,

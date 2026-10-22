@@ -116,6 +116,14 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	runners := s.runners
 	s.mu.Unlock()
 
+	for src, sem := range sourceSemaphores(runners) {
+		for _, r := range runners {
+			if r.plan.SourceID == src {
+				r.sem = sem
+			}
+		}
+	}
+
 	var wg sync.WaitGroup
 	for _, r := range runners {
 		wg.Add(1)
@@ -126,4 +134,29 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 	wg.Wait()
 	return nil
+}
+
+// Builds one capacity-limited channel per source.
+//
+// The cap is the strictest limit among the source's plans: a metric configured to
+// allow one concurrent collection is a statement about the source, not just itself.
+// Channels are fixed-size, so backpressure blocks a runner instead of queueing work
+// (rule 10).
+func sourceSemaphores(runners []*runner) map[string]chan struct{} {
+	limits := make(map[string]int)
+	for _, r := range runners {
+		n := r.plan.Limits.MaxConcurrentCollections
+		if n <= 0 {
+			continue
+		}
+		if cur, ok := limits[r.plan.SourceID]; !ok || n < cur {
+			limits[r.plan.SourceID] = n
+		}
+	}
+
+	sems := make(map[string]chan struct{}, len(limits))
+	for src, n := range limits {
+		sems[src] = make(chan struct{}, n)
+	}
+	return sems
 }

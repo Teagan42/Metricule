@@ -13,6 +13,9 @@ type runner struct {
 	sched *Scheduler
 	plan  Plan
 	coll  Collector
+	// sem caps concurrent collection across every plan on the same source. Assigned
+	// by Run before any runner starts.
+	sem chan struct{}
 }
 
 func newRunner(s *Scheduler, plan Plan, c Collector) *runner {
@@ -145,14 +148,40 @@ func (r *runner) refresh(ctx context.Context, trigger telemetry.Trigger) bool {
 	return true
 }
 
-// Runs the collector under the plan's timeout.
+// Runs the collector under the plan's timeout, holding a source capacity slot.
+//
+// The timeout starts after acquisition so that waiting for capacity cannot consume
+// the budget meant for query execution.
 func (r *runner) collect(ctx context.Context) (Result, error) {
+	if err := r.acquire(ctx); err != nil {
+		return Result{}, err
+	}
+	defer r.release()
+
 	if r.plan.Timeout <= 0 {
 		return r.coll.Collect(ctx)
 	}
 	cctx, cancel := context.WithTimeout(ctx, r.plan.Timeout)
 	defer cancel()
 	return r.coll.Collect(cctx)
+}
+
+func (r *runner) acquire(ctx context.Context) error {
+	if r.sem == nil {
+		return nil
+	}
+	select {
+	case r.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *runner) release() {
+	if r.sem != nil {
+		<-r.sem
+	}
 }
 
 func (r *runner) publish(res Result) error {
