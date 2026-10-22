@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -24,6 +25,9 @@ type Options struct {
 	Now func() time.Time
 	// Retry bounds failure handling. Zero fields take package defaults.
 	Retry RetryPolicy
+	// Jitter returns a fraction in [0,1) scaling each plan's jitter window. Defaults
+	// to a pseudo-random source; overridden to make schedules deterministic in tests.
+	Jitter func() float64
 }
 
 // Scheduler drives collection for a fixed set of plans.
@@ -61,6 +65,17 @@ func NewScheduler(opts Options) (*Scheduler, error) {
 		s.now = time.Now
 	}
 	return s, nil
+}
+
+// Returns the jitter fraction for the next interval.
+//
+// math/rand/v2 is deliberate: spreading query schedules is a load concern, not a
+// security one, and its top-level source is safe for concurrent use.
+func (s *Scheduler) jitter() float64 {
+	if s.opts.Jitter != nil {
+		return s.opts.Jitter()
+	}
+	return rand.Float64()
 }
 
 // Add registers a plan and the collector that executes it.

@@ -19,16 +19,111 @@ func newRunner(s *Scheduler, plan Plan, c Collector) *runner {
 	return &runner{sched: s, plan: plan, coll: c}
 }
 
-func (r *runner) run(ctx context.Context) {
-	// Startup collection so that no metric is absent merely because its interval has
-	// not elapsed (§7.6).
-	r.refresh(ctx, telemetry.TriggerStartup)
-
-	<-ctx.Done()
+// Pending deadlines for one plan. Owned by the runner goroutine, never shared.
+//
+// A single wake-up deadline replaces one timer per concern, so a plan costs one
+// goroutine and one timer regardless of how many schedules apply to it.
+type schedule struct {
+	interval  time.Time
+	reconcile time.Time
+	retry     time.Time
+	// attempt counts consecutive failures since the last success.
+	attempt int
 }
 
-// Executes one collection and publishes or fails according to the outcome.
-func (r *runner) refresh(ctx context.Context, trigger telemetry.Trigger) {
+// Returns the earliest pending deadline and what it will trigger. A zero time means
+// nothing is scheduled.
+func (s *schedule) next() (time.Time, telemetry.Trigger) {
+	var at time.Time
+	var trigger telemetry.Trigger
+	consider := func(t time.Time, tr telemetry.Trigger) {
+		if t.IsZero() || (!at.IsZero() && !t.Before(at)) {
+			return
+		}
+		at, trigger = t, tr
+	}
+	consider(s.interval, telemetry.TriggerSchedule)
+	consider(s.reconcile, telemetry.TriggerReconcile)
+	consider(s.retry, telemetry.TriggerSchedule)
+	return at, trigger
+}
+
+func (r *runner) run(ctx context.Context) {
+	var sc schedule
+	// Startup collection so that no metric is absent merely because its interval has
+	// not elapsed (§7.6).
+	r.refreshAndReschedule(ctx, telemetry.TriggerStartup, &sc)
+
+	timer := time.NewTimer(time.Hour)
+	timer.Stop()
+	defer timer.Stop()
+
+	for {
+		now := r.sched.now()
+		due, trigger := sc.next()
+		if !due.IsZero() && !due.After(now) {
+			r.refreshAndReschedule(ctx, trigger, &sc)
+			continue
+		}
+
+		// A nil channel parks the select when no schedule applies, which is the
+		// steady state for a notify-only plan before its reconcile window.
+		var wake <-chan time.Time
+		if !due.IsZero() {
+			timer.Reset(due.Sub(now))
+			wake = timer.C
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		}
+		timer.Stop()
+	}
+}
+
+// Collects once and rearms every deadline from the outcome.
+func (r *runner) refreshAndReschedule(ctx context.Context, trigger telemetry.Trigger, sc *schedule) {
+	ok := r.refresh(ctx, trigger)
+	now := r.sched.now()
+
+	sc.retry = time.Time{}
+	if ok {
+		// Success resets retry state so a recovered source returns to its normal
+		// cadence immediately (§7.3).
+		sc.attempt = 0
+	} else {
+		sc.attempt++
+		if sc.attempt < r.sched.opts.Retry.MaxAttempts {
+			sc.retry = now.Add(r.sched.opts.Retry.Delay(sc.attempt))
+		} else {
+			// Attempts are bounded: fall back to the plan's schedule rather than
+			// retrying a dead source forever.
+			sc.attempt = 0
+		}
+	}
+
+	// Any refresh postpones the interval, so a notification-driven collection does
+	// not leave a redundant poll queued behind it.
+	if r.plan.Interval > 0 {
+		sc.interval = now.Add(r.intervalDelay())
+	}
+	if r.plan.Reconcile > 0 {
+		sc.reconcile = now.Add(r.plan.Reconcile)
+	}
+}
+
+// Spreads interval schedules across the configured jitter window (§7.3).
+func (r *runner) intervalDelay() time.Duration {
+	if r.plan.Jitter <= 0 {
+		return r.plan.Interval
+	}
+	return r.plan.Interval + time.Duration(r.sched.jitter()*float64(r.plan.Jitter))
+}
+
+// Executes one collection, publishing or failing according to the outcome.
+func (r *runner) refresh(ctx context.Context, trigger telemetry.Trigger) bool {
 	m := r.sched.opts.Metrics
 	m.RefreshRequested(r.plan.ID, trigger)
 
@@ -41,11 +136,13 @@ func (r *runner) refresh(ctx context.Context, trigger telemetry.Trigger) {
 	}
 	if err != nil {
 		r.recordFailure(elapsed, err)
-		return
+		return false
 	}
 
-	m.CollectionSucceeded(r.plan.ID, r.plan.SourceID, elapsed, res.Snapshot.SampleCount(), res.Snapshot.CollectedAt)
+	m.CollectionSucceeded(r.plan.ID, r.plan.SourceID, elapsed,
+		res.Snapshot.SampleCount(), res.Snapshot.CollectedAt)
 	m.SetSnapshotAge(r.plan.ID, r.sched.now().Sub(res.Snapshot.CollectedAt))
+	return true
 }
 
 // Runs the collector under the plan's timeout.
