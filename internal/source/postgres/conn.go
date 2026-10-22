@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	// Keeps a pool that is down from refilling as fast as the health checker runs.
+	// Bounds a dial against an unresponsive host when the DSN sets no
+	// connect_timeout. Also bounds the socket deadline after a cancel request.
 	defaultConnectTimeout = 10 * time.Second
 	// Releases connections above pool.max_idle: pgx has no maximum idle count, so
 	// the ceiling comes from reaping instead.
@@ -100,7 +101,9 @@ func connCount(v int) int32 {
 func applyRuntimeParams(params map[string]string, queryTimeout time.Duration) {
 	params["default_transaction_read_only"] = "on"
 
-	ms := strconv.FormatInt(queryTimeout.Milliseconds(), 10)
+	// Floor of 1: PostgreSQL reads statement_timeout=0 as no limit, so a
+	// sub-millisecond query_timeout would remove the server-side bound entirely.
+	ms := strconv.FormatInt(max(queryTimeout.Milliseconds(), 1), 10)
 	setIfAbsent(params, "statement_timeout", ms)
 	setIfAbsent(params, "idle_in_transaction_session_timeout", ms)
 	setIfAbsent(params, "application_name", applicationName)

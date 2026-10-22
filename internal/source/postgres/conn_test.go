@@ -56,6 +56,23 @@ func TestPoolConfigForcesReadOnlySessions(t *testing.T) {
 	}
 }
 
+// PostgreSQL reads statement_timeout=0 as no limit.
+func TestPoolConfigNeverDisablesStatementTimeout(t *testing.T) {
+	cfg, err := poolConfig(source.PostgresSettings{
+		DSN:          "postgres://u:p@localhost/app",
+		MaxOpen:      1,
+		QueryTimeout: 500 * time.Microsecond,
+	})
+	if err != nil {
+		t.Fatalf("poolConfig: %v", err)
+	}
+	for _, key := range []string{"statement_timeout", "idle_in_transaction_session_timeout"} {
+		if got := cfg.ConnConfig.RuntimeParams[key]; got == "0" || got == "" {
+			t.Errorf("%s = %q, want a positive bound", key, got)
+		}
+	}
+}
+
 func TestPoolConfigKeepsExplicitRuntimeParams(t *testing.T) {
 	cfg, err := poolConfig(source.PostgresSettings{
 		DSN:          "postgres://u:p@localhost/app?statement_timeout=250&application_name=custom",
