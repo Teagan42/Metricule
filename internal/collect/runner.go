@@ -234,8 +234,20 @@ func (r *runner) publish(res Result) error {
 
 // Records a failed attempt and applies the configured staleness policy.
 func (r *runner) recordFailure(elapsed time.Duration, cause error) {
+	m := r.sched.opts.Metrics
 	reason := classify(cause)
-	r.sched.opts.Metrics.CollectionFailed(r.plan.ID, r.plan.SourceID, elapsed, reason)
+	m.CollectionFailed(r.plan.ID, r.plan.SourceID, elapsed, reason)
+
+	// A rejected publication is a defect in the mapped result, not in the source, so
+	// it is attributed to mapping and cardinality rather than left as a bare error.
+	switch reason {
+	case telemetry.ReasonCardinality:
+		m.CardinalityRejected(r.plan.ID)
+		m.MappingFailed(r.plan.ID, reason)
+	case telemetry.ReasonDuplicateSeries, telemetry.ReasonConversion:
+		m.MappingFailed(r.plan.ID, reason)
+	}
+
 	r.sched.log.Error("collection failed",
 		"collection", r.plan.ID, "source", r.plan.SourceID,
 		"reason", string(reason), "error", cause)

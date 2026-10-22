@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/teagan42/metricule/internal/config"
 	"github.com/teagan42/metricule/internal/snapshot"
 	"github.com/teagan42/metricule/internal/telemetry"
 )
@@ -53,6 +54,12 @@ type Scheduler struct {
 // ErrAlreadyStarted rejects registration after Run has been called.
 var ErrAlreadyStarted = errors.New("scheduler already started")
 
+// ErrUnsupportedMode rejects a collection mode this build cannot drive.
+//
+// Configuration validation rejects these modes too; failing again here keeps the
+// scheduler honest if a plan reaches it from anywhere else (rule 4).
+var ErrUnsupportedMode = errors.New("unsupported collection mode")
+
 // NewScheduler validates options and returns a scheduler with no plans.
 func NewScheduler(opts Options) (*Scheduler, error) {
 	if opts.Store == nil {
@@ -86,7 +93,7 @@ func (s *Scheduler) jitter() float64 {
 	if s.opts.Jitter != nil {
 		return s.opts.Jitter()
 	}
-	return rand.Float64()
+	return rand.Float64() //nolint:gosec // schedule spreading, not a security decision
 }
 
 // Add registers a plan and the collector that executes it.
@@ -98,6 +105,19 @@ func (s *Scheduler) Add(plan Plan, c Collector) error {
 	}
 	if c == nil {
 		return fmt.Errorf("collect: plan %q has no collector", plan.ID)
+	}
+	switch plan.Mode {
+	case config.ModeManual, config.ModeCDC:
+		return fmt.Errorf("collect: plan %q: mode %q: %w", plan.ID, plan.Mode, ErrUnsupportedMode)
+	case config.ModePoll, config.ModeNotify, config.ModeAuto, "":
+	default:
+		return fmt.Errorf("collect: plan %q: mode %q: %w", plan.ID, plan.Mode, ErrUnsupportedMode)
+	}
+	if plan.Interval <= 0 && plan.Reconcile <= 0 {
+		// Startup collection would be the only refresh, which looks like a working
+		// metric that silently never updates.
+		s.log.Warn("plan has no recurring schedule; it collects only at startup",
+			"collection", plan.ID, "source", plan.SourceID)
 	}
 
 	s.mu.Lock()

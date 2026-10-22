@@ -38,21 +38,20 @@ func TestConcurrentPublishFailAndRead(t *testing.T) {
 			defer writeWG.Done()
 			for i := range iterations {
 				id := collectionID(i % collections)
-				switch {
-				case i%7 == 0:
+				if i%7 == 0 {
 					if err := store.Fail(id, base.Add(time.Duration(i)*time.Millisecond)); err != nil {
 						t.Errorf("Fail: %v", err)
 						return
 					}
-				default:
-					n := 2
-					if (i+w)%2 == 0 {
-						n = 5
-					}
-					if err := store.Publish(series(id, base, n)); err != nil {
-						t.Errorf("Publish: %v", err)
-						return
-					}
+					continue
+				}
+				n := 2
+				if (i+w)%2 == 0 {
+					n = 5
+				}
+				if err := store.Publish(series(id, base, n)); err != nil {
+					t.Errorf("Publish: %v", err)
+					return
 				}
 			}
 		}(w)
