@@ -219,6 +219,16 @@ func (s *Source) connectLocked(ctx context.Context) error {
 		return s.pathError("stat", err)
 	}
 
+	// The driver reports an unreadable file as a bare SQLITE_CANTOPEN, which tells
+	// an operator nothing. Probing first keeps the actionable message.
+	probe, err := os.Open(s.path)
+	if err != nil {
+		return s.pathError("open", err)
+	}
+	if err = probe.Close(); err != nil {
+		return s.pathError("close", err)
+	}
+
 	db, err := sql.Open(driverName, s.dsn)
 	if err != nil {
 		return fmt.Errorf("source %q: open %s: %w", s.id, s.path, err)
@@ -229,7 +239,11 @@ func (s *Source) connectLocked(ctx context.Context) error {
 
 	if err := verifyReadOnly(ctx, db); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("source %q: open %s: %w", s.id, s.path, err)
+		// The file itself is readable, so the remaining cause is almost always the
+		// WAL sidecars: reading a WAL database needs the -wal file plus a -shm
+		// index that SQLite creates beside it.
+		return fmt.Errorf("source %q: open %s: %w; a WAL database also requires a readable %s-wal and a directory that permits creating %s-shm",
+			s.id, s.path, err, s.path, s.path)
 	}
 
 	s.db, s.ident = db, fi
