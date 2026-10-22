@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -8,10 +9,25 @@ import (
 )
 
 // StoreConfig configures an in-memory store.
-type StoreConfig struct{}
+type StoreConfig struct {
+	// MaxTotalSeries bounds the series published across every collection group. Zero
+	// disables the bound. Only the store can enforce it, because no single collection
+	// sees the global total (§8.7).
+	MaxTotalSeries int
+}
 
 // MemoryStore holds one immutable snapshot per collection group.
+//
+// Readers never block on a collection: a scrape takes a read lock on the collection
+// index and then loads each published pointer atomically (P2, §8.2).
 type MemoryStore struct {
+	cfg StoreConfig
+
+	// Serializes writes so that validation, the global series count, and the pointer
+	// swap are one atomic step with respect to other writers.
+	writeMu sync.Mutex
+	total   int
+
 	mu      sync.RWMutex
 	entries map[string]*entry
 }
@@ -24,14 +40,40 @@ type entry struct {
 var _ Store = (*MemoryStore)(nil)
 
 // NewMemoryStore builds a store with the given staleness policies.
-func NewMemoryStore(_ StoreConfig) *MemoryStore {
-	return &MemoryStore{entries: make(map[string]*entry)}
+func NewMemoryStore(cfg StoreConfig) *MemoryStore {
+	return &MemoryStore{cfg: cfg, entries: make(map[string]*entry)}
 }
 
 // Publish atomically replaces the series owned by snap.CollectionID.
+//
+// Takes ownership of snap: the caller must not mutate it afterwards (AD-004).
 func (s *MemoryStore) Publish(snap *Snapshot) error {
-	s.lookupOrCreate(snap.CollectionID).state.Store(snap)
+	if err := validate(snap); err != nil {
+		return err
+	}
+
+	e := s.lookupOrCreate(snap.CollectionID)
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	// Replacement, not addition: the group's own series leave the total first.
+	total := s.total - publishedCount(e.state.Load()) + snap.SampleCount()
+	if s.cfg.MaxTotalSeries > 0 && total > s.cfg.MaxTotalSeries {
+		return fmt.Errorf("collection %q: %d series exceeds the %d total limit: %w",
+			snap.CollectionID, total, s.cfg.MaxTotalSeries, ErrTotalSeriesLimit)
+	}
+
+	s.total = total
+	e.state.Store(snap)
 	return nil
+}
+
+func publishedCount(snap *Snapshot) int {
+	if snap == nil {
+		return 0
+	}
+	return snap.SampleCount()
 }
 
 // Fail records a failed collection at time at.
