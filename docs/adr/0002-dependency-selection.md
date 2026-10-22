@@ -17,6 +17,7 @@ conflict in `go.mod` and, worse, divergent behavior between packages.
 | Concern | Choice | Version |
 |---|---|---|
 | Prometheus metrics | `github.com/prometheus/client_golang` | v1.25.0 |
+| Exposition rendering | `github.com/prometheus/common/expfmt` | v0.72.0 |
 | PostgreSQL | `github.com/jackc/pgx/v5` | v5.11.0 |
 | SQLite | `modernc.org/sqlite` | v1.61.0 |
 | YAML | `go.yaml.in/yaml/v3` | v3.0.5 |
@@ -27,6 +28,13 @@ conflict in `go.mod` and, worse, divergent behavior between packages.
 Testcontainers is test-only, imported solely by `tests/integration/*` behind the
 `integration` build tag, so it never reaches a release binary. §4.2 names it; rule 9
 requires real datastores where real datastore behavior is under test.
+
+`prometheus/common/expfmt` was already present transitively through
+`client_golang`; it became a direct dependency when `metricule test` needed to render
+a collection as text exposition. Using the canonical encoder means `test` output is
+byte-identical to what a scrape returns, which is the point of the command (§15.2).
+Hand-rolling the text format would be a second implementation of a specification we
+already depend on.
 
 **This table is the authoritative pin, not `go.mod`.** `pgx` and `modernc.org/sqlite`
 have no importer until the M1 adapters land, and `go mod tidy` — enforced in CI —
