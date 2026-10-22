@@ -250,6 +250,9 @@ func wireType(t config.MetricType) (snapshot.Type, error) {
 	case config.MetricGauge:
 		return snapshot.TypeGauge, nil
 	case config.MetricCounter:
+		// Monotonicity is a property of the source column across collections, which a
+		// single result set cannot show. Mapping rejects only what it can see: a
+		// negative cumulative value (§8.5).
 		return snapshot.TypeCounter, nil
 	case config.MetricStateSet:
 		// A state_set is a mapping abstraction over gauges, not a wire type (§5.1).
