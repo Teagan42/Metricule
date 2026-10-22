@@ -192,6 +192,11 @@ func validateSQLite(v *collector, path string, s *SQLiteSource) {
 	if s.Path == "" {
 		v.errorf(path+".path", "required field is missing")
 	}
+	// AD-007 fixes v0.1 to read-only access. Accepting `readonly: false` and
+	// quietly reading anyway would advertise a capability that does not exist.
+	if !s.ReadOnly {
+		v.errorf(path+".readonly", "must be true: v0.1 supports read-only SQLite access only (AD-007)")
+	}
 	if s.BusyTimeout <= 0 {
 		v.errorf(path+".busy_timeout", "must be greater than zero")
 	}
@@ -471,6 +476,12 @@ func validateMapping(v *collector, path string, m *Metric, c *Config) {
 		if _, dup := m.Mapping.Labels[name]; dup {
 			v.errorf(mp+".static_labels."+name, "label %q is also declared in labels", name)
 		}
+	}
+
+	// A zero multiplier turns every sample into a fabricated zero, which is exactly
+	// what AD-010 forbids.
+	if m.Mapping.Scale == 0 {
+		v.errorf(mp+".scale", "must not be zero: every sample would become zero")
 	}
 
 	switch m.Mapping.Null {

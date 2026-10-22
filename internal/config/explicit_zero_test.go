@@ -1,17 +1,11 @@
-//go:build configgaps
-
-// Failing tests for §5.5 rules that are specified but not enforced.
+// Regression tests: an explicit zero is not an absent field.
 //
-// Run with: go test -tags configgaps ./internal/config/
+// Defaulting once treated zero as "unset", so `max_series_per_metric: 0` was rewritten
+// to the default instead of being rejected, `retries: 0` could not be expressed, and
+// `readonly: false` was silently flipped. That discarded operator intent and hid
+// invalid values from validation, which §5.1 forbids.
 //
-// Build-tagged so `make check` stays green while the gap is recorded as executable
-// evidence instead of prose. Every test here asserts the behavior the specification
-// requires, never the behavior the code currently has. Delete the tag, not the
-// assertions, once ApplyDefaults can distinguish an explicit zero from an unset field.
-//
-// Root cause for all of them: defaults.go treats zero as "unset" (`setInt`,
-// `setDuration`), so an operator cannot state zero and validation never sees it.
-// Fixing it needs presence tracking in internal/config, which is Agent 0's contract.
+// Each test states what the specification requires, never what the code happens to do.
 package config
 
 import (

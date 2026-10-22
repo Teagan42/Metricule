@@ -25,6 +25,11 @@ type Config struct {
 	Defaults   Defaults                `yaml:"defaults"`
 	Sources    map[string]SourceConfig `yaml:"sources"`
 	Metrics    []Metric                `yaml:"metrics"`
+
+	// present records which paths the document stated, so defaulting can tell an
+	// explicit zero from an absent field. Unexported, so it never serializes and
+	// never appears in a redacted config dump.
+	present fieldSet
 }
 
 // Metadata describes the exporter deployment. Informational only.
