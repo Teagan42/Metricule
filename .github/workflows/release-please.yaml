@@ -1,0 +1,50 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# Releases must not race each other; a cancelled run can leave a half-updated
+# release pull request behind.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Maintain release pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # RELEASE_PLEASE_TOKEN is a user or app token. GITHUB_TOKEN cannot trigger
+      # workflow runs, so a release pull request it opens never reports the
+      # status checks the main ruleset requires. See docs/releasing.md.
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Called directly rather than driven by the `release` event: a release created
+  # with GITHUB_TOKEN fires no event.
+  publish:
+    name: Publish ${{ needs.prepare.outputs.tag }}
+    needs: prepare
+    if: needs.prepare.outputs.released == 'true'
+    uses: ./.github/workflows/release.yaml
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}

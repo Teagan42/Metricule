@@ -1,8 +1,20 @@
 name: Release
 
+# Release-please owns tag creation and release notes. This workflow only builds
+# and attaches artifacts to a release that already exists.
 on:
-  push:
-    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of an existing release, such as v0.1.0.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of an existing release, such as v0.1.0.
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,7 +25,6 @@ permissions:
 env:
   CGO_ENABLED: 0
   GO_VERSION: "1.27"
-  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   binaries:
@@ -32,6 +43,8 @@ jobs:
             goarch: amd64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -42,8 +55,8 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          make build VERSION=${GITHUB_REF_NAME} COMMIT=${GITHUB_SHA::7}
-          mv bin/metricule metricule-${GOOS}-${GOARCH}
+          make build VERSION="${{ inputs.tag }}" COMMIT="${GITHUB_SHA::7}"
+          mv bin/metricule "metricule-${GOOS}-${GOARCH}"
 
       - name: Checksum
         run: sha256sum metricule-* > metricule-${{ matrix.goos }}-${{ matrix.goarch }}.sha256
@@ -51,17 +64,23 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: |
-            metricule-*
-            !*.sha256.tmp
+          path: metricule-*
 
   image:
     name: Publish multi-architecture image
     runs-on: ubuntu-latest
     outputs:
+      image: ${{ steps.name.outputs.image }}
       digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      # GHCR rejects uppercase paths and the owner is "Teagan42".
+      - name: Resolve image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -72,14 +91,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Tags come from the input, not github.ref: a reusable call from main runs
+      # with refs/heads/main and semver patterns would not resolve.
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.IMAGE }}
+          images: ${{ steps.name.outputs.image }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}},value=${{ inputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
+            type=raw,value=latest
 
       - name: Build and push
         id: push
@@ -91,7 +112,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ inputs.tag }}
             COMMIT=${{ github.sha }}
           provenance: true
           sbom: true
@@ -99,7 +120,7 @@ jobs:
       # Lets consumers verify the image came from this repository's workflow.
       - uses: actions/attest-build-provenance@v1
         with:
-          subject-name: ${{ env.IMAGE }}
+          subject-name: ${{ steps.name.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
@@ -109,10 +130,12 @@ jobs:
     needs: image
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.IMAGE }}@${{ needs.image.outputs.digest }}
+          image: ${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}
           format: spdx-json
           output-file: metricule.spdx.json
 
@@ -121,12 +144,14 @@ jobs:
           name: sbom
           path: metricule.spdx.json
 
-  publish:
-    name: Create GitHub release
+  attach:
+    name: Attach release assets
     runs-on: ubuntu-latest
     needs: [binaries, image, sbom]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -140,7 +165,7 @@ jobs:
           cp schemas/v1alpha1.schema.json release/
           ls -l release
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: release/*
-          generate_release_notes: true
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" release/* --clobber
