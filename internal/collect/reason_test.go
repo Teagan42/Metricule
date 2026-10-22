@@ -10,6 +10,7 @@ import (
 
 	"github.com/teagan42/metricule/internal/collect"
 	"github.com/teagan42/metricule/internal/snapshot"
+	"github.com/teagan42/metricule/internal/source"
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
@@ -22,6 +23,10 @@ type reasonedError struct {
 func (e reasonedError) Error() string            { return e.err.Error() }
 func (e reasonedError) Unwrap() error            { return e.err }
 func (e reasonedError) Reason() telemetry.Reason { return e.reason }
+
+// Pins the declared contract. An adapter error that drifts from source.Classified
+// stops compiling rather than silently degrading to "unknown".
+var _ source.Classified = reasonedError{}
 
 func TestAdapterReportedReasonReachesTelemetry(t *testing.T) {
 	t.Parallel()

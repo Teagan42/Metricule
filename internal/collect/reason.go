@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/teagan42/metricule/internal/snapshot"
+	"github.com/teagan42/metricule/internal/source"
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
@@ -32,9 +33,9 @@ var adapterReasons = map[telemetry.Reason]bool{
 
 // Maps a collection error onto a bounded telemetry reason.
 //
-// An adapter classifies its own failures through a Reason method, matched
-// structurally so the scheduler holds no adapter-specific logic and imports no
-// adapter package (P7). Everything else falls back to sentinels this package can see.
+// An adapter classifies its own failures through source.Classified, so the scheduler
+// holds no adapter-specific logic and imports no adapter package (P7). Everything
+// else falls back to sentinels this package can see.
 func classify(err error) telemetry.Reason {
 	if r, ok := adapterReason(err); ok {
 		return r
@@ -63,13 +64,14 @@ func classify(err error) telemetry.Reason {
 
 // Extracts a self-reported reason from an error chain, rejecting values outside the
 // closed set.
+//
+// The second return must stay distinct from an "unknown" reason. Collapsing the two
+// would make an unclassified error indistinguishable from one an adapter classified
+// as unknown, and the sentinel chain in classify would never run: a timeout or a
+// publication rejection would report "unknown" instead of its real cause.
 func adapterReason(err error) (telemetry.Reason, bool) {
-	var reporter interface{ Reason() telemetry.Reason }
-	if !errors.As(err, &reporter) {
-		return "", false
-	}
-	r := reporter.Reason()
-	if !adapterReasons[r] {
+	r, ok := source.ReasonOf(err)
+	if !ok || !adapterReasons[r] {
 		return "", false
 	}
 	return r, true
