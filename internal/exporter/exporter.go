@@ -191,6 +191,7 @@ type statusRecorder struct {
 	code int
 }
 
+// WriteHeader records the status code before forwarding it.
 func (r *statusRecorder) WriteHeader(code int) {
 	r.code = code
 	r.ResponseWriter.WriteHeader(code)
@@ -199,6 +200,7 @@ func (r *statusRecorder) WriteHeader(code int) {
 // Routes registry errors into structured logging instead of stderr.
 type slogErrorLogger struct{ logger *slog.Logger }
 
+// Println satisfies promhttp's logger interface.
 func (l slogErrorLogger) Println(v ...any) {
 	l.logger.Error("metric exposition error", "detail", v)
 }
