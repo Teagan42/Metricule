@@ -9,6 +9,7 @@ import (
 
 	"github.com/teagan42/metricule/internal/collect"
 	"github.com/teagan42/metricule/internal/config"
+	"github.com/teagan42/metricule/internal/snapshot"
 )
 
 func TestPerSourceConcurrencyIsBounded(t *testing.T) {
@@ -207,4 +208,53 @@ func TestShutdownCancelsAnInFlightCollection(t *testing.T) {
 	}
 	// stop() fails the test if Run does not unwind the in-flight collection.
 	stop()
+}
+
+func TestShutdownDoesNotRecordAFailureOrDropSnapshots(t *testing.T) {
+	t.Parallel()
+
+	store := snapshot.NewMemoryStore(snapshot.StoreConfig{
+		Default: snapshot.Policy{Mode: snapshot.Drop},
+	})
+	opts, _, reg := testOptionsWithRegistry(t)
+	opts.Store = store
+	sched, err := collect.NewScheduler(opts)
+	if err != nil {
+		t.Fatalf("NewScheduler: %v", err)
+	}
+
+	blocked := make(chan struct{}, 1)
+	coll := newFakeCollector("jobs", func(ctx context.Context, call int) (collect.Result, error) {
+		if call == 1 {
+			return okResult("jobs", 42), nil
+		}
+		select {
+		case blocked <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		return collect.Result{}, ctx.Err()
+	})
+	plan := testPlan("jobs", time.Millisecond)
+	plan.Timeout = time.Hour
+	if err := sched.Add(plan, coll); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	stop := startScheduler(t, sched)
+	select {
+	case <-blocked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the second collection never started")
+	}
+	stop()
+
+	// Cancelling collection is an operator action, not a source failure: it must not
+	// count an error nor discard the last good snapshot.
+	if got := familyTotal(t, reg, "metricule_collection_errors_total"); got != 0 {
+		t.Fatalf("collection_errors_total = %v after shutdown, want 0", got)
+	}
+	if got := store.Current(time.Now()); len(got) != 1 {
+		t.Fatalf("store holds %d snapshots after shutdown, want the last good result", len(got))
+	}
 }
