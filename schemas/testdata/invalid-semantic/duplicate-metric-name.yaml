@@ -1,0 +1,31 @@
+# Two families with one name conflict in the exposition; JSON Schema cannot compare
+# array elements.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
+  - name: app_users
+    help: Something else entirely
+    type: counter
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM accounts
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

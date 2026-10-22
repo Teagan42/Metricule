@@ -1,0 +1,23 @@
+# Watch scope filters DML kinds only.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  pg:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: auto
+      fallback_interval: 60s
+      watch:
+        events:
+          - truncate

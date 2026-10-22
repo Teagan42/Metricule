@@ -1,0 +1,19 @@
+# metricule_ is reserved for the exporter's own telemetry (§13).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: metricule_custom_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

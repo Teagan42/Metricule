@@ -1,0 +1,23 @@
+# ADR 0007 direction break: Go accepts this and rewrites the cap to 1000; the schema's
+# `minimum: 1` rejects it. See internal/config/gaps_test.go.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+defaults:
+  limits:
+    max_series_per_metric: 0
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

@@ -1,0 +1,19 @@
+# The query shape is fixed by the source type, which the schema cannot cross-reference.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: http://app:8080
+metrics:
+  - name: app_sessions_active
+    help: Active sessions
+    type: gauge
+    source: api
+    query:
+      sql: SELECT COUNT(*) AS value FROM sessions
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

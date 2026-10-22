@@ -107,13 +107,39 @@ func fixtures(t *testing.T, dir string) []string {
 	return paths
 }
 
+// Names a subtest by its last two path elements, so examples sharing a file name
+// stay distinguishable.
+func fixtureName(path string) string {
+	return filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
+}
+
+// Collects every shipped example. §23 requires documented examples to be exercised.
+func examplePaths(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, pattern := range []string{
+		filepath.Join("..", "examples", "*.yaml"),
+		filepath.Join("..", "examples", "*", "*.yaml"),
+	} {
+		paths, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("glob examples: %v", err)
+		}
+		out = append(out, paths...)
+	}
+	if len(out) == 0 {
+		t.Fatal("no example configurations found")
+	}
+	return out
+}
+
 // Asserts the schema accepts everything Go accepts.
 func TestSchemaAcceptsValidConfigurations(t *testing.T) {
 	sch := compileSchema(t)
 
-	paths := append(fixtures(t, "valid"), filepath.Join("..", "examples", "reference.yaml"))
+	paths := append(fixtures(t, "valid"), examplePaths(t)...)
 	for _, path := range paths {
-		t.Run(filepath.Base(path), func(t *testing.T) {
+		t.Run(fixtureName(path), func(t *testing.T) {
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
@@ -134,7 +160,7 @@ func TestSchemaRejectsStructuralErrors(t *testing.T) {
 	sch := compileSchema(t)
 
 	for _, path := range fixtures(t, "invalid-structural") {
-		t.Run(filepath.Base(path), func(t *testing.T) {
+		t.Run(fixtureName(path), func(t *testing.T) {
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
@@ -156,7 +182,7 @@ func TestSchemaRejectsStructuralErrors(t *testing.T) {
 // validation and skipping the Go check.
 func TestSemanticErrorsAreGoOnly(t *testing.T) {
 	for _, path := range fixtures(t, "invalid-semantic") {
-		t.Run(filepath.Base(path), func(t *testing.T) {
+		t.Run(fixtureName(path), func(t *testing.T) {
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)

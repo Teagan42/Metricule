@@ -1,0 +1,21 @@
+# ADR 0007 direction break: Go accepts this and rewrites the bound to 4 MiB; the
+# schema's `minimum: 1` rejects it. See internal/config/gaps_test.go.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: http://app:8080
+    max_response_bytes: 0
+metrics:
+  - name: app_sessions_active
+    help: Active sessions
+    type: gauge
+    source: api
+    request:
+      path: /api/status
+    mapping:
+      value: "$.sessions.active"
+    collect:
+      mode: poll
+      interval: 15s

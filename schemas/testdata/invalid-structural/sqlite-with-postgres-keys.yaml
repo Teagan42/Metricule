@@ -1,0 +1,21 @@
+# Per-source-type key checking: a sqlite source rejects postgres fields.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+    pool:
+      max_open: 4
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

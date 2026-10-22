@@ -1,0 +1,18 @@
+# The type discriminator selects which field set applies.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    path: /data/app.db
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

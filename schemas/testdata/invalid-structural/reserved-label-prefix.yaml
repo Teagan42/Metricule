@@ -1,0 +1,21 @@
+# The __ label prefix is reserved by Prometheus.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value, 'x' AS tier_col
+    mapping:
+      value: value
+      labels:
+        __tier: tier_col
+    collect:
+      mode: poll
+      interval: 30s

@@ -1,0 +1,132 @@
+# PostgreSQL: polled aggregates plus LISTEN/NOTIFY-driven refresh.
+#
+# Grant the collection role SELECT only. Trigger management needs separate
+# schema-owner credentials; see docs/configuration.md and §14.2.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: orders-postgres
+  description: Order pipeline metrics from the application database
+
+server:
+  listen: "0.0.0.0:9108"
+
+defaults:
+  collection:
+    interval: 30s
+    timeout: 10s
+    reconcile_interval: 5m
+    debounce: 250ms
+    # Spreads schedules so every metric does not query on the same tick.
+    jitter: 3s
+  limits:
+    max_series_per_metric: 200
+    max_rows_per_query: 5000
+    max_concurrent_collections: 4
+  failure:
+    mode: retain
+    max_stale_age: 5m
+
+sources:
+  orders:
+    type: postgres
+    dsn:
+      env: ORDERS_DATABASE_URL
+    pool:
+      max_open: 4
+      max_idle: 2
+    query_timeout: 10s
+    tls:
+      mode: require
+
+metrics:
+  - name: orders_pending
+    help: Orders accepted but not yet fulfilled
+    type: gauge
+    source: orders
+
+    query:
+      sql: |
+        SELECT COUNT(*) AS value
+        FROM orders
+        WHERE state = 'pending'
+
+    mapping:
+      value: value
+
+    collect:
+      mode: poll
+      interval: 30s
+
+  - name: orders_by_state
+    help: Order count by pipeline state
+    type: gauge
+    source: orders
+
+    query:
+      sql: |
+        SELECT state, COUNT(*) AS value
+        FROM orders
+        GROUP BY state
+
+    mapping:
+      value: value
+      labels:
+        state: state
+
+    # Notifications are invalidation signals, not durable events (AD-005), so
+    # fallback_interval reconciles whatever the listener missed.
+    collect:
+      mode: notify
+      channel: metricule_orders_changed
+      fallback_interval: 2m
+      debounce: 500ms
+      watch:
+        tables:
+          - orders
+        events:
+          - insert
+          - update
+          - delete
+
+  - name: orders_revenue_cents_total
+    help: Cumulative captured revenue in cents
+    type: counter
+    source: orders
+
+    # A counter needs a persisted monotonic source value (§8.5). This reads a
+    # ledger that only ever appends.
+    query:
+      sql: |
+        SELECT currency, SUM(amount_cents) AS value
+        FROM revenue_ledger
+        GROUP BY currency
+
+    mapping:
+      value: value
+      labels:
+        currency: currency
+
+    collect:
+      mode: poll
+      interval: 1m
+
+  - name: orders_replication_state
+    help: Replication state reported by the primary
+    type: state_set
+    source: orders
+
+    query:
+      sql: SELECT state AS value FROM replication_status LIMIT 1
+
+    mapping:
+      value: value
+      states:
+        - streaming
+        - catchup
+        - stopped
+
+    collect:
+      mode: poll
+      interval: 30s

@@ -1,0 +1,40 @@
+# Full HTTP/JSON surface: static headers, request params, path allow-list, bounds.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: https://app.internal:8443
+    timeout: 3s
+    headers:
+      Accept: application/json
+      X-Client: metricule
+    authentication:
+      type: bearer
+      token:
+        file: /run/secrets/app_api_token
+    allowed_paths:
+      - /api/status
+      - /api/workers
+    max_response_bytes: 262144
+    max_redirects: 1
+    retries: 3
+metrics:
+  - name: app_sessions_active
+    help: Currently active sessions
+    type: gauge
+    source: api
+    request:
+      method: GET
+      path: /api/status
+      params:
+        scope: live
+      headers:
+        X-Request-Source: metricule
+    mapping:
+      value: "$.sessions.active"
+    collect:
+      mode: poll
+      interval: 20s
+      jitter: 2s
+      timeout: 3s
