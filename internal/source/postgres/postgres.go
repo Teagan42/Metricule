@@ -2,6 +2,25 @@
 //
 // Built on pgx directly rather than database/sql, because §9.2 requires a
 // dedicated long-lived connection for LISTEN that a pool must never recycle.
+//
+// # Read-only guarantees
+//
+// Every collection runs in a repeatable-read, read-only transaction on a session
+// whose default_transaction_read_only is forced on. Both are enforcement the
+// server applies; neither depends on inspecting SQL text, which proves nothing
+// (§14.5). Operators should still grant the collection role SELECT only (§14.2).
+//
+// # Result values
+//
+// Integers widen to int64, floats and numerics to float64, uuid to its canonical
+// string. jsonb documents, arrays, and intervals pass through in pgx's decoded
+// form, because inventing a scalar for them would be lossy.
+//
+// # Known limitations
+//
+// M1 scope is querying. LISTEN/NOTIFY (§9.2) is M2 and trigger management (§9.3)
+// is M3, so Capabilities reports neither. pool.max_idle maps onto pgx's minimum
+// idle count plus idle reaping, since pgx caps a floor rather than a ceiling.
 package postgres
 
 import (
