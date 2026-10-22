@@ -12,11 +12,34 @@ import (
 // Collector contract requires an error instead of a partial Result.
 var ErrNoSnapshot = errors.New("collector returned no snapshot without an error")
 
+// Reasons an adapter may report for itself. Any other value is discarded, so a
+// malformed or attacker-influenced error string can never become a label (rule 7).
+//
+// Cardinality and duplicate_series are deliberately absent: those are publication
+// verdicts the snapshot store owns, and cardinality additionally drives the rejection
+// counter. An adapter must not be able to claim either.
+var adapterReasons = map[telemetry.Reason]bool{
+	telemetry.ReasonTimeout:        true,
+	telemetry.ReasonConnection:     true,
+	telemetry.ReasonQuery:          true,
+	telemetry.ReasonDecode:         true,
+	telemetry.ReasonConversion:     true,
+	telemetry.ReasonNullValue:      true,
+	telemetry.ReasonMissingField:   true,
+	telemetry.ReasonResultTooLarge: true,
+	telemetry.ReasonUnavailable:    true,
+}
+
 // Maps a collection error onto a bounded telemetry reason.
 //
-// Only sentinels visible across package boundaries are classified; an adapter's own
-// taxonomy stays in its logs because the scheduler holds no adapter logic (P7).
+// An adapter classifies its own failures through a Reason method, matched
+// structurally so the scheduler holds no adapter-specific logic and imports no
+// adapter package (P7). Everything else falls back to sentinels this package can see.
 func classify(err error) telemetry.Reason {
+	if r, ok := adapterReason(err); ok {
+		return r
+	}
+
 	switch {
 	case err == nil:
 		return telemetry.ReasonUnknown
@@ -36,4 +59,18 @@ func classify(err error) telemetry.Reason {
 	default:
 		return telemetry.ReasonUnknown
 	}
+}
+
+// Extracts a self-reported reason from an error chain, rejecting values outside the
+// closed set.
+func adapterReason(err error) (telemetry.Reason, bool) {
+	var reporter interface{ Reason() telemetry.Reason }
+	if !errors.As(err, &reporter) {
+		return "", false
+	}
+	r := reporter.Reason()
+	if !adapterReasons[r] {
+		return "", false
+	}
+	return r, true
 }
