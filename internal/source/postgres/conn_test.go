@@ -23,8 +23,11 @@ func TestPoolConfigAppliesBounds(t *testing.T) {
 	if cfg.MaxConns != 7 {
 		t.Errorf("MaxConns = %d, want 7", cfg.MaxConns)
 	}
-	if cfg.MinIdleConns != 3 {
-		t.Errorf("MinIdleConns = %d, want 3", cfg.MinIdleConns)
+	if cfg.MinConns != 3 {
+		t.Errorf("MinConns = %d, want max_idle 3", cfg.MinConns)
+	}
+	if cfg.MaxConnIdleTime != defaultConnIdleTime {
+		t.Errorf("MaxConnIdleTime = %s, want %s", cfg.MaxConnIdleTime, defaultConnIdleTime)
 	}
 	if cfg.ConnConfig.ConnectTimeout != defaultConnectTimeout {
 		t.Errorf("ConnectTimeout = %s, want %s", cfg.ConnConfig.ConnectTimeout, defaultConnectTimeout)

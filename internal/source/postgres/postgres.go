@@ -19,8 +19,9 @@
 // # Known limitations
 //
 // M1 scope is querying. LISTEN/NOTIFY (§9.2) is M2 and trigger management (§9.3)
-// is M3, so Capabilities reports neither. pool.max_idle maps onto pgx's minimum
-// idle count plus idle reaping, since pgx caps a floor rather than a ceiling.
+// is M3, so Capabilities reports neither. pool.max_idle becomes a steady-state
+// ceiling rather than a hard one, because pgx bounds idle connections from
+// below.
 package postgres
 
 import (

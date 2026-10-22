@@ -19,8 +19,8 @@ import (
 const (
 	// Keeps a pool that is down from refilling as fast as the health checker runs.
 	defaultConnectTimeout = 10 * time.Second
-	// Approximates pool.max_idle: pgx caps a minimum idle count, not a maximum, so
-	// connections beyond max_idle are released by idle reaping instead.
+	// Releases connections above pool.max_idle: pgx has no maximum idle count, so
+	// the ceiling comes from reaping instead.
 	defaultConnIdleTime = time.Minute
 	applicationName     = "metricule"
 )
@@ -56,7 +56,10 @@ func poolConfig(s source.PostgresSettings) (*pgxpool.Config, error) {
 	}
 
 	cfg.MaxConns = connCount(s.MaxOpen)
-	cfg.MinIdleConns = connCount(s.MaxIdle)
+	// MinConns, not MinIdleConns: pgx only reaps idle connections while the total
+	// exceeds MinConns, so this makes max_idle a steady-state ceiling without
+	// recreating the warm connections once per idle period.
+	cfg.MinConns = connCount(s.MaxIdle)
 	cfg.MaxConnIdleTime = defaultConnIdleTime
 
 	if cfg.ConnConfig.ConnectTimeout == 0 {
