@@ -24,6 +24,52 @@ concurrency:
 # actual datastore behavior is under test. There is deliberately no placeholder
 # job here, because a green job that runs no tests misreports coverage.
 jobs:
+  sqlite:
+    name: SQLite adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # No service container: SQLite is a file. The external writer is a
+      # re-executed test binary, so the only requirement is a writable volume.
+      # CGO stays off (ADR 0004); modernc.org/sqlite is pure Go.
+      - name: Integration tests
+        env:
+          CGO_ENABLED: 0
+        run: go test -tags=integration -timeout 15m -v ./tests/integration/sqlite/...
+
+      # §20.5 requires race coverage where concurrency is involved, and these
+      # tests read concurrently while another process commits. -race needs cgo.
+      - name: Integration tests with the race detector
+        env:
+          CGO_ENABLED: 1
+        run: go test -tags=integration -race -timeout 20m ./tests/integration/sqlite/...
+
+      # §14.1 and §16: the published image runs as uid 65532, so a shared volume
+      # must be collectable by a user that does not own the database file. The
+      # uid switch needs sudo, which is why this is a job step and not a test.
+      - name: Verify collection as uid 65532 on a shared volume
+        env:
+          CGO_ENABLED: 0
+          METRICULE_TEST_SHARED_DB: /tmp/shared/app.db
+        run: |
+          set -euxo pipefail
+          go test -tags=integration -c -o /tmp/sqlite-integration.test ./tests/integration/sqlite/
+          chmod 0755 /tmp/sqlite-integration.test
+          install -d -m 0755 /tmp/shared
+
+          /tmp/sqlite-integration.test -test.v -test.run '^TestSharedVolumeFixture$'
+          chmod 0644 "$METRICULE_TEST_SHARED_DB"
+
+          id -u metricule >/dev/null 2>&1 \
+            || sudo useradd --uid 65532 --no-create-home --shell /usr/sbin/nologin metricule
+          sudo -u metricule env "METRICULE_TEST_SHARED_DB=$METRICULE_TEST_SHARED_DB" \
+            /tmp/sqlite-integration.test -test.v -test.run '^TestSharedVolumeCollection$'
+
   image:
     name: Container image
     runs-on: ubuntu-latest
