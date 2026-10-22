@@ -1,0 +1,23 @@
+# One metric must not be able to consume the whole global series budget (§8.7).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+defaults:
+  limits:
+    max_series_per_metric: 2000
+    max_total_series: 1000
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

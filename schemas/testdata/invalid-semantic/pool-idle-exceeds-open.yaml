@@ -1,0 +1,23 @@
+# An idle cap above the open cap can never be reached.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  pg:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+    pool:
+      max_open: 2
+      max_idle: 8
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

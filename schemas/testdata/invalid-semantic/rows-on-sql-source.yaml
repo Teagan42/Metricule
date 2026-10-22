@@ -1,0 +1,20 @@
+# SQL results are already row-oriented, so rows selection is meaningless there.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      rows: "$.items[*]"
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

@@ -1,0 +1,20 @@
+# notify mode has nothing to listen on without a channel.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  pg:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      fallback_interval: 60s

@@ -1,0 +1,22 @@
+# sslmode values come from libpq.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  pg:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+    tls:
+      mode: paranoid
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

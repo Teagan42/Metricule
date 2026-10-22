@@ -1,0 +1,19 @@
+# Source names become telemetry label values (§13).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  app-db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: app-db
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

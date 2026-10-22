@@ -1,0 +1,69 @@
+# Full PostgreSQL surface: pool, TLS, opt-in trigger management, notify and auto modes.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+metadata:
+  name: billing
+  description: Billing database metrics
+server:
+  listen: "127.0.0.1:9108"
+defaults:
+  collection:
+    interval: 1m
+    timeout: 15s
+    reconcile_interval: 10m
+    debounce: 500ms
+    jitter: 5s
+sources:
+  billing:
+    type: postgres
+    dsn:
+      env: BILLING_DATABASE_URL
+    pool:
+      max_open: 8
+      max_idle: 4
+    query_timeout: 15s
+    tls:
+      mode: verify-full
+      root_cert: /etc/ssl/certs/ca.pem
+    triggers:
+      manage: true
+      schema: metricule
+      cleanup_on_shutdown: true
+      dsn:
+        file: /run/secrets/billing_owner_url
+metrics:
+  - name: billing_invoices_open
+    help: Invoices awaiting payment
+    type: gauge
+    source: billing
+    query:
+      sql: SELECT COUNT(*) AS value FROM invoices WHERE paid_at IS NULL
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_invoices_changed
+      fallback_interval: 5m
+      debounce: 250ms
+      watch:
+        tables:
+          - invoices
+        events:
+          - insert
+          - update
+          - delete
+
+  - name: billing_payments_cents_total
+    help: Cumulative payments recorded in cents
+    type: counter
+    source: billing
+    query:
+      sql: SELECT currency, SUM(amount_cents) AS value FROM payments GROUP BY currency
+    mapping:
+      value: value
+      labels:
+        currency: currency
+      scale: 1
+    collect:
+      mode: auto
+      fallback_interval: 5m

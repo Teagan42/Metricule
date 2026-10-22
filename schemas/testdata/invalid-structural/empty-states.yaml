@@ -1,0 +1,20 @@
+# A state_set with no states would emit no series at all.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_state
+    help: Service state
+    type: state_set
+    source: db
+    query:
+      sql: SELECT state AS value FROM status
+    mapping:
+      value: value
+      states: []
+    collect:
+      mode: poll
+      interval: 30s

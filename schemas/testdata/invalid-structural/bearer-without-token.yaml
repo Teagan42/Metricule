@@ -1,0 +1,21 @@
+# Bearer authentication has no credential without a token reference.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: http://app:8080
+    authentication:
+      type: bearer
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: api
+    request:
+      path: /status
+    mapping:
+      value: "$.value"
+    collect:
+      mode: poll
+      interval: 30s

@@ -1,0 +1,21 @@
+# A channel in poll mode advertises notification handling that will never run.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  pg:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
+      channel: app_users_changed

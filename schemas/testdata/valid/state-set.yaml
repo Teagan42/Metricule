@@ -1,0 +1,28 @@
+# state_set bounds state cardinality by configuration (§8.7).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+    busy_timeout: 5s
+    change_check_interval: 1s
+metrics:
+  - name: app_migration_state
+    help: Current schema migration state
+    type: state_set
+    source: db
+    query:
+      sql: SELECT state AS value FROM migration_status
+    mapping:
+      value: value
+      states:
+        - pending
+        - running
+        - complete
+        - failed
+      static_labels:
+        component: schema
+    collect:
+      mode: auto
+      fallback_interval: 2m

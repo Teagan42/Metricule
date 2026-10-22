@@ -1,0 +1,37 @@
+# The §5.1 contract spells the null policy as `null:`, which YAML resolves to the null
+# scalar rather than the string "null" (ADR 0007).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_nullable_fail
+    help: Fails the collection when the value is null
+    type: gauge
+    source: db
+    query:
+      sql: SELECT value FROM gauges WHERE name = 'a'
+    mapping:
+      value: value
+      null: fail
+    collect:
+      mode: poll
+      interval: 30s
+
+  - name: app_nullable_omit
+    help: Drops the sample when the value is null
+    type: gauge
+    source: db
+    query:
+      sql: SELECT key, value FROM gauges
+    mapping:
+      value: value
+      labels:
+        key: key
+      null: omit
+      scale: 0.001
+    collect:
+      mode: poll
+      interval: 30s

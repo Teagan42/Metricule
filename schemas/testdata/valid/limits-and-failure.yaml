@@ -1,0 +1,53 @@
+# Every limit and both staleness policies, at document and metric scope.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+defaults:
+  limits:
+    max_series_per_metric: 500
+    max_rows_per_query: 5000
+    max_concurrent_collections: 2
+    max_total_series: 50000
+    max_metrics: 50
+    max_label_value_bytes: 256
+  failure:
+    mode: retain
+    max_stale_age: 10m
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_sessions
+    help: Sessions by tier
+    type: gauge
+    source: db
+    query:
+      sql: SELECT tier, COUNT(*) AS value FROM sessions GROUP BY tier
+    mapping:
+      value: value
+      labels:
+        tier: tier
+    collect:
+      mode: poll
+      interval: 30s
+      timeout: 5s
+    limits:
+      max_series_per_metric: 20
+      max_rows_per_query: 100
+    failure:
+      mode: drop
+
+  - name: app_queue_depth
+    help: Queued work items
+    type: gauge
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM queue
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 15s
+    failure:
+      mode: retain
+      max_stale_age: 1m

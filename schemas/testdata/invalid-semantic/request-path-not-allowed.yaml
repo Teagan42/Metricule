@@ -1,0 +1,21 @@
+# allowed_paths is enforced against each metric's request path (§11.3).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: http://app:8080
+    allowed_paths:
+      - /api/status
+metrics:
+  - name: app_sessions_active
+    help: Active sessions
+    type: gauge
+    source: api
+    request:
+      path: /api/credentials
+    mapping:
+      value: "$.sessions.active"
+    collect:
+      mode: poll
+      interval: 30s

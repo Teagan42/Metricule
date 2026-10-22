@@ -1,0 +1,20 @@
+# AD-008 fixes the v0.1 adapter set.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: mysql
+    dsn:
+      env: APP_DATABASE_URL
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
