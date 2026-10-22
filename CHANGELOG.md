@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/Teagan42/Metricule/compare/v0.1.0...v0.2.0) (2026-10-22)
+
+
+### Features
+
+* **postgres:** add postgresql source adapter ([#11](https://github.com/Teagan42/Metricule/issues/11)) ([6705028](https://github.com/Teagan42/Metricule/commit/67050286ae6161fe2b81bffb4d65098b964342dc))
+* **source:** add adapter error classification and diagnostics contracts ([#13](https://github.com/Teagan42/Metricule/issues/13)) ([91c0697](https://github.com/Teagan42/Metricule/commit/91c069765f33443f262579d97cb5c2d18142510f))
+
+
+### Documentation
+
+* record v0.1 limitations ([#14](https://github.com/Teagan42/Metricule/issues/14)) ([9f01095](https://github.com/Teagan42/Metricule/commit/9f0109531d6f441081d8bf9f4fcb67c06aba7c21))
+
 ## 0.1.0 (2026-10-22)
 
 
