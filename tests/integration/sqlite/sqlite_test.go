@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -287,6 +288,47 @@ func TestDataVersionIsOnlyComparableWithinOneConnection(t *testing.T) {
 	a, b := dataVersion(t, observer), dataVersion(t, other)
 	if a == b {
 		t.Logf("independent connections happened to agree (%d); the values are still not comparable", a)
+	}
+}
+
+// Names the fixture for the two-user CI step. See the sqlite job in
+// .github/workflows/integration.yaml, which cannot be expressed inside one test
+// because switching uid needs sudo.
+const sharedDBEnv = "METRICULE_TEST_SHARED_DB"
+
+// TestSharedVolumeFixture creates the fixture as the owning user, not a test.
+func TestSharedVolumeFixture(t *testing.T) {
+	path := os.Getenv(sharedDBEnv)
+	if path == "" {
+		t.Skip("fixture role; driven by the sqlite CI job")
+	}
+	// Rollback-journal mode: a read-only bind mount cannot host the WAL sidecars.
+	createDatabase(t, path, rollbackMode)
+	seed(t, path, 5)
+}
+
+// §14.1 and §16: the published image runs as uid 65532 and must collect from a
+// database file owned by the monitored application.
+func TestSharedVolumeCollection(t *testing.T) {
+	path := os.Getenv(sharedDBEnv)
+	if path == "" {
+		t.Skip("shared-volume role; driven by the sqlite CI job")
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) == os.Geteuid() {
+		t.Fatalf("fixture is owned by the collecting user (uid %d); the test proves nothing", st.Uid)
+	}
+
+	before := fingerprint(t, path)
+	s := openSource(t, path, time.Second)
+	if n := count(t, s); n != 5 {
+		t.Fatalf("count = %d, want 5", n)
+	}
+	if after := fingerprint(t, path); after != before {
+		t.Errorf("collection modified a file it does not own\nbefore: %s\nafter:  %s", before, after)
 	}
 }
 
