@@ -32,7 +32,9 @@ type Diagnostics struct {
 	LastSuccess time.Time
 	// ConsecutiveFailures resets on any successful check.
 	ConsecutiveFailures int
-	// Reconnects counts down-to-up transitions since Open.
+	// Reconnects counts down-to-up transitions. Monotonic for the life of the
+	// Source, including across Close and a later Open: internal/runtime derives a
+	// counter delta from it, so resetting it would retract published samples.
 	Reconnects int
 	// LastError is the most recent failure, retained after recovery.
 	LastError error
