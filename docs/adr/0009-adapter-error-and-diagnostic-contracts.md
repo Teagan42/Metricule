@@ -37,9 +37,10 @@ type Diagnosable interface {
 }
 ```
 
-`ReasonOf(err)` traverses wrapping with `errors.As` and falls back to
-`reason.Unknown`. Consumers keep their own allowlist: a reason outside the set a
-consumer accepts collapses to `unknown` rather than widening the label space (§13).
+`ReasonOf(err) (reason.Reason, bool)` traverses wrapping with `errors.As`. The
+boolean reports whether an adapter actually classified the error. Consumers keep
+their own allowlist: a reason outside the set a consumer accepts collapses to
+`unknown` rather than widening the label space (§13).
 
 The failure vocabulary moves to **`internal/telemetry/reason`**, a dependency-free
 leaf package. `telemetry.Reason` becomes a type alias, so both spellings name the
@@ -106,6 +107,15 @@ being meaningful.
 
 `Target` and `LastError` are required to be safe to log. Credentials are resolved
 before construction, so redaction is the adapter's responsibility (§14.3).
+
+`ReasonOf` returns a boolean because the first version did not, and Agent 2 declined
+to use it for a correct reason: a single return collapses "no adapter reported" into
+"an adapter reported unknown", which would have swallowed the scheduler's own sentinel
+chain and reported `unknown` where the snapshot store had already determined
+`cardinality` or `duplicate_series`. The scheduler hand-rolled the `errors.As` walk to
+keep the distinction. Rather than leave a helper in the shared contract whose
+convenient form silently loses information, the helper now reports both — the same
+comma-ok shape `source.Row` uses to separate an absent key from a null value.
 
 Two maintenance couplings are now real and should move together with the telemetry
 contract:

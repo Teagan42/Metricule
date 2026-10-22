@@ -121,6 +121,11 @@ Import `internal/telemetry/reason`, never `internal/telemetry` — the latter pu
 `client_golang` and would put an exporter dependency in every adapter's transitive
 graph. A test enforces this (ADR 0009).
 
+`source.ReasonOf(err)` returns `(reason.Reason, bool)`. The boolean matters if your
+caller has its own fallback chain — a single return would collapse "nobody reported a
+reason" into "an adapter reported unknown", and the scheduler relies on that
+distinction to fall through to its own sentinels.
+
 > **This failure mode is silent.** `source.ReasonOf` does not validate the value, and
 > each consumer bounds its own label space to keep cardinality fixed (§13). A reason
 > outside a consumer's accepted set becomes `unknown` with **no error anywhere** — not

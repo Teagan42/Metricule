@@ -24,16 +24,23 @@ type Classified interface {
 	Reason() reason.Reason
 }
 
-// ReasonOf extracts an adapter-reported reason, falling back to Unknown.
+// ReasonOf extracts an adapter-reported reason.
 //
-// Does not validate the value against a caller's allowlist; apply that separately
-// so each consumer controls its own label space.
-func ReasonOf(err error) reason.Reason {
+// The second return reports whether an adapter actually classified the error, which
+// a caller with its own fallback chain needs: collapsing an unclassified error to
+// Unknown would swallow a caller's sentinel handling, so "nobody reported" stays
+// distinct from "an adapter reported unknown".
+//
+// Does not validate the value against a caller's allowlist; apply that separately so
+// each consumer controls its own label space.
+//
+//	if r, ok := source.ReasonOf(err); ok { ... }
+func ReasonOf(err error) (reason.Reason, bool) {
 	var c Classified
 	if errors.As(err, &c) {
-		return c.Reason()
+		return c.Reason(), true
 	}
-	return reason.Unknown
+	return reason.Unknown, false
 }
 
 // Diagnosable is implemented by sources that expose their health state.
