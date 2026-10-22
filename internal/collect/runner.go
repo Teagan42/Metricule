@@ -2,6 +2,7 @@ package collect
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/teagan42/metricule/internal/source"
@@ -20,6 +21,13 @@ type runner struct {
 	// events holds at most one pending invalidation. A deeper buffer would only
 	// schedule duplicate refreshes for the same unknown change (rule 10).
 	events chan source.ChangeEvent
+
+	// Readiness flags, read by Status from another goroutine.
+	attempted atomic.Bool
+	collected atomic.Bool
+	// lastSuccess is the CollectedAt of the newest published snapshot, in Unix
+	// nanoseconds, so failures can report a growing snapshot age.
+	lastSuccess atomic.Int64
 }
 
 func newRunner(s *Scheduler, plan Plan, c Collector) *runner {
@@ -167,6 +175,7 @@ func (r *runner) refresh(ctx context.Context, trigger telemetry.Trigger) bool {
 	if err == nil {
 		err = r.publish(res)
 	}
+	r.attempted.Store(true)
 	if err != nil {
 		r.recordFailure(elapsed, err)
 		return false
@@ -175,6 +184,8 @@ func (r *runner) refresh(ctx context.Context, trigger telemetry.Trigger) bool {
 	m.CollectionSucceeded(r.plan.ID, r.plan.SourceID, elapsed,
 		res.Snapshot.SampleCount(), res.Snapshot.CollectedAt)
 	m.SetSnapshotAge(r.plan.ID, r.sched.now().Sub(res.Snapshot.CollectedAt))
+	r.lastSuccess.Store(res.Snapshot.CollectedAt.UnixNano())
+	r.collected.Store(true)
 	return true
 }
 
@@ -229,8 +240,15 @@ func (r *runner) recordFailure(elapsed time.Duration, cause error) {
 		"collection", r.plan.ID, "source", r.plan.SourceID,
 		"reason", string(reason), "error", cause)
 
-	if err := r.sched.opts.Store.Fail(r.plan.ID, r.sched.now()); err != nil {
+	now := r.sched.now()
+	if err := r.sched.opts.Store.Fail(r.plan.ID, now); err != nil {
 		r.sched.log.Error("applying the staleness policy failed",
 			"collection", r.plan.ID, "error", err)
+	}
+
+	// Republish the age so an operator can see retained data going stale rather than
+	// a gauge frozen at the last success (P6, §8.4).
+	if ns := r.lastSuccess.Load(); ns > 0 {
+		r.sched.opts.Metrics.SetSnapshotAge(r.plan.ID, now.Sub(time.Unix(0, ns)))
 	}
 }
