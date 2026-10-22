@@ -106,6 +106,10 @@ Every PR must state:
 Produce reproducible evidence for behavioral claims. A claim that a test passes must be
 accompanied by the command and its output.
 
+PR titles are Conventional Commits and are enforced by CI. Release-please derives the
+version from them, so a wrong type ships a wrong version. Scopes come from the ownership
+table above. See `docs/releasing.md` for the branching rules and release flow.
+
 ## Definition of Done
 
 - The implementation exists.
