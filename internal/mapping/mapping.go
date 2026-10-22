@@ -88,7 +88,48 @@ func (m *Mapper) Map(rs source.ResultSet) (snapshot.Family, error) {
 		fam.Samples = append(fam.Samples, samples...)
 	}
 	sortSamples(fam.Samples)
+	if err := m.validate(fam.Samples); err != nil {
+		return snapshot.Family{}, err
+	}
 	return fam, nil
+}
+
+// Enforces the publication invariants: unique labelsets, bounded cardinality, and
+// valid sample values (§8.3, §8.7).
+//
+// Runs on the complete sample set because a cap breach must fail the collection
+// atomically rather than truncate it.
+func (m *Mapper) validate(samples []snapshot.Sample) error {
+	if limit := m.spec.Limits.MaxSeriesPerMetric; limit > 0 && len(samples) > limit {
+		return m.errorf(fieldValue, telemetry.ReasonCardinality,
+			fmt.Sprintf("%d series exceeds max_series_per_metric %d", len(samples), limit))
+	}
+
+	maxBytes := m.spec.Limits.MaxLabelValueBytes
+	seen := make(map[string]struct{}, len(samples))
+	for _, s := range samples {
+		for _, l := range s.Labels {
+			if maxBytes > 0 && len(l.Value) > maxBytes {
+				return m.errorf("labels."+l.Name, telemetry.ReasonCardinality,
+					fmt.Sprintf("label value of %d bytes exceeds max_label_value_bytes %d",
+						len(l.Value), maxBytes))
+			}
+		}
+		key := labelKey(s.Labels)
+		if _, dup := seen[key]; dup {
+			// Overwriting would hide a query that does not group as its author
+			// believed (§8.3).
+			return m.errorf("labels", telemetry.ReasonDuplicateSeries,
+				"two rows produced the same labelset")
+		}
+		seen[key] = struct{}{}
+
+		if m.wire == snapshot.TypeCounter && s.Value < 0 {
+			return m.errorf(fieldValue, telemetry.ReasonConversion,
+				"counter sample is negative, which is not a cumulative value")
+		}
+	}
+	return nil
 }
 
 // Builds every sample one row contributes. A state_set row yields one per state.

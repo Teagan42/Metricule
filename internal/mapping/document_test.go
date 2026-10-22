@@ -189,4 +189,3 @@ func stateSetSpec() mapping.Spec {
 		},
 	}
 }
-
