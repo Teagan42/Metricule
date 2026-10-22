@@ -1,0 +1,42 @@
+name: PR title
+
+# Merges are squashed with the pull request title as the commit subject, so the
+# title is what release-please parses to pick the next version.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            deps
+            refactor
+            test
+            docs
+            build
+            ci
+            chore
+            style
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z])(?!.*\.$).+$
+          subjectPatternError: |
+            The subject "{subject}" of "{title}" is invalid. Start lowercase and
+            omit the trailing period, as in "feat(config): add retry budget".

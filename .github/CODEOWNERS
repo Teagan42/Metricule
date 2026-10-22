@@ -1,0 +1,10 @@
+# Agent 0 owns interfaces, the config contract, ADRs, and integration.
+# See the ownership table in AGENTS.md.
+* @Teagan42
+
+/AGENTS.md            @Teagan42
+/docs/HANDOFF.md      @Teagan42
+/internal/source/     @Teagan42
+/internal/telemetry/  @Teagan42
+/internal/secrets/    @Teagan42
+/schemas/             @Teagan42
