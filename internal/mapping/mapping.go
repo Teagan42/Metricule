@@ -21,6 +21,13 @@ import (
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
+// stateLabel is generated for state_set metrics. Configuration rejects a
+// user-declared label of the same name.
+const stateLabel = "state"
+
+// fieldValue names the value mapping field in diagnostics (§12.3).
+const fieldValue = "value"
+
 // Spec is the compile-time input for one metric family.
 type Spec struct {
 	// CollectionID identifies the owning collection group for telemetry and snapshots.
@@ -71,50 +78,96 @@ func (m *Mapper) Map(rs source.ResultSet) (snapshot.Family, error) {
 		Type: m.wire,
 	}
 	for _, row := range rs.Rows {
-		s, err := m.sample(row)
+		samples, err := m.rowSamples(row)
 		switch {
 		case errors.Is(err, errOmitSample):
 			continue
 		case err != nil:
 			return snapshot.Family{}, err
 		}
-		fam.Samples = append(fam.Samples, s)
+		fam.Samples = append(fam.Samples, samples...)
 	}
 	sortSamples(fam.Samples)
 	return fam, nil
 }
 
-// Builds one sample from one row.
-func (m *Mapper) sample(row source.Row) (snapshot.Sample, error) {
-	mp := m.spec.Metric.Mapping
-
-	raw, err := m.lookup(row, mp.Value, "value")
+// Builds every sample one row contributes. A state_set row yields one per state.
+func (m *Mapper) rowSamples(row source.Row) ([]snapshot.Sample, error) {
+	labels, err := m.rowLabels(row)
 	if err != nil {
-		return snapshot.Sample{}, err
+		return nil, err
+	}
+	if m.spec.Metric.Type == config.MetricStateSet {
+		return m.stateSamples(row, labels)
+	}
+
+	raw, err := m.lookup(row, m.spec.Metric.Mapping.Value, fieldValue)
+	if err != nil {
+		return nil, err
 	}
 	v, err := toFloat(raw)
 	if err != nil {
-		return snapshot.Sample{}, m.conversionError("value", err)
+		return nil, m.conversionError(fieldValue, err)
+	}
+	return []snapshot.Sample{{Labels: labels, Value: v * m.spec.Metric.Mapping.Scale}}, nil
+}
+
+// Expands one row into a gauge per configured state: 1 for the active state, 0 for
+// the rest (§5.1, §8.5).
+func (m *Mapper) stateSamples(row source.Row, labels []snapshot.Label) ([]snapshot.Sample, error) {
+	mp := m.spec.Metric.Mapping
+
+	raw, err := m.lookup(row, mp.Value, fieldValue)
+	if err != nil {
+		return nil, err
+	}
+	active, err := toLabelValue(raw)
+	if err != nil {
+		return nil, m.conversionError(fieldValue, err)
+	}
+	if !slices.Contains(mp.States, active) {
+		// The value itself is source data and stays out of the message (§12.3).
+		return nil, m.errorf(fieldValue, telemetry.ReasonConversion,
+			"value is not one of the configured states")
 	}
 
+	out := make([]snapshot.Sample, 0, len(mp.States))
+	for _, state := range mp.States {
+		stateLabels := make([]snapshot.Label, 0, len(labels)+1)
+		stateLabels = append(stateLabels, labels...)
+		stateLabels = append(stateLabels, snapshot.Label{Name: stateLabel, Value: state})
+		sortLabels(stateLabels)
+
+		value := 0.0
+		if state == active {
+			value = 1
+		}
+		out = append(out, snapshot.Sample{Labels: stateLabels, Value: value})
+	}
+	return out, nil
+}
+
+// Builds the labelset shared by every sample from one row.
+func (m *Mapper) rowLabels(row source.Row) ([]snapshot.Label, error) {
+	mp := m.spec.Metric.Mapping
 	labels := make([]snapshot.Label, 0, len(m.labels)+len(mp.StaticLabels))
 	for _, name := range m.labels {
-		lv, err := m.lookup(row, mp.Labels[name], "labels."+name)
+		field := "labels." + name
+		raw, err := m.lookup(row, mp.Labels[name], field)
 		if err != nil {
-			return snapshot.Sample{}, err
+			return nil, err
 		}
-		s, err := toLabelValue(lv)
+		value, err := toLabelValue(raw)
 		if err != nil {
-			return snapshot.Sample{}, m.conversionError("labels."+name, err)
+			return nil, m.conversionError(field, err)
 		}
-		labels = append(labels, snapshot.Label{Name: name, Value: s})
+		labels = append(labels, snapshot.Label{Name: name, Value: value})
 	}
 	for name, value := range mp.StaticLabels {
 		labels = append(labels, snapshot.Label{Name: name, Value: value})
 	}
 	sortLabels(labels)
-
-	return snapshot.Sample{Labels: labels, Value: v * mp.Scale}, nil
+	return labels, nil
 }
 
 // Reads one mapping field from a row.
