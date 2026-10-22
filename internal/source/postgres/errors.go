@@ -51,6 +51,11 @@ func (e *Error) Reason() telemetry.Reason { return e.reason }
 //
 // Collection telemetry uses a closed label set, so an unmapped error must land on a
 // defined reason rather than leak an error string (§13).
+//
+// internal/collect accepts a reported reason only against its own allowlist and
+// degrades anything else to "unknown". Widening the set returned here needs a
+// matching change there. It will never accept cardinality or duplicate_series:
+// those are publication verdicts the snapshot store owns, not query failures.
 func classify(err error) telemetry.Reason {
 	switch {
 	case err == nil:
