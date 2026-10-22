@@ -385,7 +385,9 @@ in v0.1 rather than accepted and ignored.
 
 ## Validation
 
-`metricule validate` reports every problem it finds in one pass, sorted by
+Validation runs in two stages. Decoding comes first and reports syntax, type and
+unknown-key problems; a file that fails to decode never reaches the semantic stage.
+Semantic validation then reports *every* problem it finds in one pass, sorted by
 configuration path, so the same invalid file always fails identically. Errors block
 loading; warnings do not.
 
