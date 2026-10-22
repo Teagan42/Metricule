@@ -173,6 +173,7 @@ M1 is the minimum viable release.
 
 - [Architecture](docs/architecture.md)
 - [Architecture decisions](docs/adr/)
+- [Known limitations](docs/limitations.md)
 - [Implementation specification](docs/HANDOFF.md)
 - [Branching and releases](docs/releasing.md)
 - [Contributor rules](AGENTS.md)

@@ -129,3 +129,6 @@ M0 defines contracts and implements configuration, validation, the CLI surface, 
 telemetry families. It contains **no collection engine and no adapters**: `serve` and
 `test` construct their sources and then report that the engine arrives in M1, rather
 than starting and serving an empty `/metrics`.
+
+Known limitations, including several deliberate design limits, are recorded in
+[`limitations.md`](limitations.md).
