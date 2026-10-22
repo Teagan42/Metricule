@@ -134,9 +134,12 @@ func New(reg prometheus.Registerer, info version.Info) *Metrics {
 			collectionBuckets, "collection", "source", "result"),
 		collectionErrors: f.counter("collection_errors_total",
 			"Total failed collections by reason.", "collection", "source", "reason"),
+		// Labelled `trigger`, not `reason`: `reason` carries failure causes on the
+		// error and mapping families, and reusing the name for refresh causes
+		// would make a join across those families produce nonsense.
 		collectionRefresh: f.counter("collection_refresh_total",
 			"Total refresh attempts, by why each attempt ran. A retry is attributed to \"retry\", not to the trigger it descended from.",
-			"collection", "reason"),
+			"collection", "trigger"),
 		collectionLastSuccess: f.gauge("collection_last_success_timestamp_seconds",
 			"Unix timestamp of the last successful collection.", "collection"),
 		collectionSnapshotAge: f.gauge("collection_snapshot_age_seconds",
