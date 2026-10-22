@@ -70,8 +70,10 @@ requires Agent 0 review.
 
 ```text
 config    -> secrets, source, selector
-source    -> (nothing internal)
+source    -> telemetry/reason
 source/*  -> source, config, selector, telemetry
+telemetry -> telemetry/reason, version
+telemetry/reason -> (nothing)
 collect   -> config, source, snapshot, telemetry
 mapping   -> config, snapshot, telemetry
 snapshot  -> (nothing internal)
@@ -82,9 +84,17 @@ telemetry -> version
 
 Three rules make this checkable:
 
-1. **`internal/source` imports no other internal package.** Adapter settings are
-   plain types with no config or secrets dependency, so `config` can import `source`
-   for capability checks without a cycle. Reversing this edge breaks the build.
+1. **`internal/source` imports only `internal/telemetry/reason`.** Adapter settings
+   are plain types with no config or secrets dependency, so `config` can import
+   `source` for capability checks without a cycle. Reversing the `config -> source`
+   edge breaks the build.
+
+   `source` must **not** import `internal/telemetry` itself. The test is not
+   acyclicity — that edge would be acyclic — it is coupling: `telemetry` imports
+   `client_golang`, so importing it would make every adapter transitively depend on
+   the Prometheus client and turn `source` from a data contract into one carrying an
+   exporter concern. `telemetry/reason` exists precisely to carry the shared failure
+   vocabulary with no dependencies at all. Keep it that way (ADR 0009).
 2. **Adapters never import each other.** `internal/collect` and `internal/mapping`
    never import any `internal/source/*` subpackage either; they see only the
    interfaces in `internal/source` (P7).

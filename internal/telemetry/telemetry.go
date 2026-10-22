@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/teagan42/metricule/internal/telemetry/reason"
 	"github.com/teagan42/metricule/internal/version"
 )
 
@@ -21,25 +22,39 @@ import (
 const Namespace = "metricule"
 
 // Reason labels a failure. Closed set: free-text errors belong in logs (§13).
-type Reason string
+//
+// An alias, not a new type: the vocabulary lives in a dependency-free leaf package
+// so adapters can classify their errors without importing the Prometheus client.
+// Aliasing keeps telemetry.Reason and reason.Reason the same type, so callers may
+// use either spelling.
+type Reason = reason.Reason
 
 // Failure reasons. Extend deliberately: each value is a label dimension.
 const (
-	ReasonTimeout         Reason = "timeout"
-	ReasonConnection      Reason = "connection"
-	ReasonQuery           Reason = "query"
-	ReasonDecode          Reason = "decode"
-	ReasonConversion      Reason = "conversion"
-	ReasonNullValue       Reason = "null_value"
-	ReasonMissingField    Reason = "missing_field"
-	ReasonDuplicateSeries Reason = "duplicate_series"
-	ReasonCardinality     Reason = "cardinality"
-	ReasonResultTooLarge  Reason = "result_too_large"
-	ReasonUnavailable     Reason = "unavailable"
-	ReasonUnknown         Reason = "unknown"
+	ReasonTimeout         = reason.Timeout
+	ReasonConnection      = reason.Connection
+	ReasonQuery           = reason.Query
+	ReasonDecode          = reason.Decode
+	ReasonConversion      = reason.Conversion
+	ReasonNullValue       = reason.NullValue
+	ReasonMissingField    = reason.MissingField
+	ReasonDuplicateSeries = reason.DuplicateSeries
+	ReasonCardinality     = reason.Cardinality
+	ReasonResultTooLarge  = reason.ResultTooLarge
+	ReasonUnavailable     = reason.Unavailable
+	ReasonUnknown         = reason.Unknown
 )
 
-// Trigger labels what caused a refresh.
+// Trigger labels why a refresh attempt is running — not what originally wanted the
+// data. The two differ only for a retry, which is attributed to TriggerRetry rather
+// than inheriting the trigger it descended from.
+//
+// That makes refresh rate readable during an outage, at the cost of not being able to
+// recover a retry's causal ancestor from this family alone. Do not add a second
+// "origin" label to recover it: it would multiply this family's cardinality by the
+// trigger count (§8.7), and counters cannot express per-event lineage anyway. A retry
+// only ever follows a failure, so collection_errors_total already identifies which
+// collections were retrying and why.
 type Trigger string
 
 // Refresh triggers.
@@ -50,6 +65,10 @@ const (
 	TriggerToken     Trigger = "token"
 	TriggerReconnect Trigger = "reconnect"
 	TriggerReconcile Trigger = "reconcile"
+	// TriggerRetry marks a re-attempt after a failure. Distinct from the trigger
+	// that originally failed, so refresh rate stays readable during an outage —
+	// which is exactly when someone is looking at it.
+	TriggerRetry Trigger = "retry"
 )
 
 // Collection outcomes, used as the result label on duration observations.
@@ -116,7 +135,8 @@ func New(reg prometheus.Registerer, info version.Info) *Metrics {
 		collectionErrors: f.counter("collection_errors_total",
 			"Total failed collections by reason.", "collection", "source", "reason"),
 		collectionRefresh: f.counter("collection_refresh_total",
-			"Total refreshes requested, by what triggered them.", "collection", "reason"),
+			"Total refresh attempts, by why each attempt ran. A retry is attributed to \"retry\", not to the trigger it descended from.",
+			"collection", "reason"),
 		collectionLastSuccess: f.gauge("collection_last_success_timestamp_seconds",
 			"Unix timestamp of the last successful collection.", "collection"),
 		collectionSnapshotAge: f.gauge("collection_snapshot_age_seconds",

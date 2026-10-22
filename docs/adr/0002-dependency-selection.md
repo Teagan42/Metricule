@@ -22,6 +22,11 @@ conflict in `go.mod` and, worse, divergent behavior between packages.
 | YAML | `go.yaml.in/yaml/v3` | v3.0.5 |
 | JSON Schema validation | `github.com/santhosh-tekuri/jsonschema/v6` | v6.0.3 |
 | JSON selectors | `github.com/theory/jsonpath` | v0.12.2 |
+| Datastore integration tests | `github.com/testcontainers/testcontainers-go` | v0.44.0 |
+
+Testcontainers is test-only, imported solely by `tests/integration/*` behind the
+`integration` build tag, so it never reaches a release binary. §4.2 names it; rule 9
+requires real datastores where real datastore behavior is under test.
 
 **This table is the authoritative pin, not `go.mod`.** `pgx` and `modernc.org/sqlite`
 have no importer until the M1 adapters land, and `go mod tidy` — enforced in CI —
