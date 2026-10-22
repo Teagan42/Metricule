@@ -28,6 +28,9 @@ type Options struct {
 	// Jitter returns a fraction in [0,1) scaling each plan's jitter window. Defaults
 	// to a pseudo-random source; overridden to make schedules deterministic in tests.
 	Jitter func() float64
+	// MaxRefreshDelay caps how long a trailing debounce may postpone a refresh. Zero
+	// derives it from each plan's debounce window.
+	MaxRefreshDelay time.Duration
 }
 
 // Scheduler drives collection for a fixed set of plans.
@@ -35,13 +38,16 @@ type Options struct {
 // Plans are registered before Run and never change afterwards, so a plan's
 // configuration cannot shift under a running collection.
 type Scheduler struct {
-	opts    Options
-	log     *slog.Logger
-	now     func() time.Time
-	runners []*runner
+	opts Options
+	log  *slog.Logger
+	now  func() time.Time
 
-	mu      sync.Mutex
-	started bool
+	// mu guards registration and the source index. Invalidate reads the index, so it
+	// outlives Add rather than being frozen into Run.
+	mu       sync.Mutex
+	started  bool
+	runners  []*runner
+	bySource map[string][]*runner
 }
 
 // ErrAlreadyStarted rejects registration after Run has been called.
@@ -57,7 +63,12 @@ func NewScheduler(opts Options) (*Scheduler, error) {
 	}
 	opts.Retry = opts.Retry.withDefaults()
 
-	s := &Scheduler{opts: opts, log: opts.Logger, now: opts.Now}
+	s := &Scheduler{
+		opts:     opts,
+		log:      opts.Logger,
+		now:      opts.Now,
+		bySource: make(map[string][]*runner),
+	}
 	if s.log == nil {
 		s.log = slog.Default()
 	}
@@ -99,7 +110,9 @@ func (s *Scheduler) Add(plan Plan, c Collector) error {
 			return fmt.Errorf("collect: duplicate plan %q", plan.ID)
 		}
 	}
-	s.runners = append(s.runners, newRunner(s, plan, c))
+	r := newRunner(s, plan, c)
+	s.runners = append(s.runners, r)
+	s.bySource[plan.SourceID] = append(s.bySource[plan.SourceID], r)
 	return nil
 }
 

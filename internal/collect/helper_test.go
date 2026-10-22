@@ -19,12 +19,20 @@ import (
 // Builds scheduler options backed by a real store and a private registry.
 func testOptions(t *testing.T) (collect.Options, *snapshot.MemoryStore) {
 	t.Helper()
+	opts, store, _ := testOptionsWithRegistry(t)
+	return opts, store
+}
+
+// Builds scheduler options and exposes the registry so telemetry can be asserted.
+func testOptionsWithRegistry(t *testing.T) (collect.Options, *snapshot.MemoryStore, *prometheus.Registry) {
+	t.Helper()
 	store := snapshot.NewMemoryStore(snapshot.StoreConfig{
 		Default: snapshot.Policy{Mode: snapshot.Retain, MaxStaleAge: time.Hour},
 	})
+	reg := prometheus.NewRegistry()
 	return collect.Options{
 		Store:   store,
-		Metrics: telemetry.New(prometheus.NewRegistry(), version.Info{}),
+		Metrics: telemetry.New(reg, version.Info{}),
 		Logger:  slog.New(slog.DiscardHandler),
 		Retry: collect.RetryPolicy{
 			MaxAttempts: 3,
@@ -32,7 +40,31 @@ func testOptions(t *testing.T) (collect.Options, *snapshot.MemoryStore) {
 			Max:         4 * time.Millisecond,
 			Factor:      2,
 		},
-	}, store
+	}, store, reg
+}
+
+// Sums a counter or gauge family across every label combination.
+func familyTotal(t *testing.T, reg *prometheus.Registry, name string) float64 {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("Gather: %v", err)
+	}
+	total := 0.0
+	for _, f := range families {
+		if f.GetName() != name {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			if c := m.GetCounter(); c != nil {
+				total += c.GetValue()
+			}
+			if g := m.GetGauge(); g != nil {
+				total += g.GetValue()
+			}
+		}
+	}
+	return total
 }
 
 // Builds a poll plan with test-scale timings.

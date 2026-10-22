@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/teagan42/metricule/internal/source"
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
@@ -16,10 +17,13 @@ type runner struct {
 	// sem caps concurrent collection across every plan on the same source. Assigned
 	// by Run before any runner starts.
 	sem chan struct{}
+	// events holds at most one pending invalidation. A deeper buffer would only
+	// schedule duplicate refreshes for the same unknown change (rule 10).
+	events chan source.ChangeEvent
 }
 
 func newRunner(s *Scheduler, plan Plan, c Collector) *runner {
-	return &runner{sched: s, plan: plan, coll: c}
+	return &runner{sched: s, plan: plan, coll: c, events: make(chan source.ChangeEvent, 1)}
 }
 
 // Pending deadlines for one plan. Owned by the runner goroutine, never shared.
@@ -32,6 +36,12 @@ type schedule struct {
 	retry     time.Time
 	// attempt counts consecutive failures since the last success.
 	attempt int
+
+	// debounce is the trailing edge of the current invalidation burst, and maxDelay
+	// is the hard deadline measured from the burst's first event.
+	debounce time.Time
+	maxDelay time.Time
+	trigger  telemetry.Trigger
 }
 
 // Returns the earliest pending deadline and what it will trigger. A zero time means
@@ -48,7 +58,24 @@ func (s *schedule) next() (time.Time, telemetry.Trigger) {
 	consider(s.interval, telemetry.TriggerSchedule)
 	consider(s.reconcile, telemetry.TriggerReconcile)
 	consider(s.retry, telemetry.TriggerSchedule)
+	consider(s.debounce, s.trigger)
+	consider(s.maxDelay, s.trigger)
 	return at, trigger
+}
+
+// Folds a change event into the pending burst.
+func (s *schedule) arm(now time.Time, ev source.ChangeEvent, window, maxDelay time.Duration) {
+	if s.debounce.IsZero() {
+		s.maxDelay = now.Add(maxDelay)
+	}
+	s.debounce = now.Add(window)
+	s.trigger = triggerFor(ev.Kind)
+}
+
+// Clears the burst: a completed refresh covers every event observed so far.
+func (s *schedule) disarm() {
+	s.debounce = time.Time{}
+	s.maxDelay = time.Time{}
 }
 
 func (r *runner) run(ctx context.Context) {
@@ -81,6 +108,8 @@ func (r *runner) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-wake:
+		case ev := <-r.events:
+			sc.arm(r.sched.now(), ev, r.plan.Debounce, r.maxRefreshDelay())
 		}
 		timer.Stop()
 	}
@@ -91,6 +120,7 @@ func (r *runner) refreshAndReschedule(ctx context.Context, trigger telemetry.Tri
 	ok := r.refresh(ctx, trigger)
 	now := r.sched.now()
 
+	sc.disarm()
 	sc.retry = time.Time{}
 	if ok {
 		// Success resets retry state so a recovered source returns to its normal
