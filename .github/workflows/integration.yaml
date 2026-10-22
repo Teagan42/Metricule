@@ -24,6 +24,31 @@ concurrency:
 # actual datastore behavior is under test. There is deliberately no placeholder
 # job here, because a green job that runs no tests misreports coverage.
 jobs:
+  postgres:
+    name: PostgreSQL adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Testcontainers starts PostgreSQL itself, so no service container is
+      # declared: the restart case stops and starts the database, which a
+      # workflow-managed service cannot do.
+      - name: Integration tests
+        env:
+          CGO_ENABLED: 0
+        run: go test -tags=integration -timeout 20m -v ./tests/integration/postgres/...
+
+      # §20.5 requires race coverage where concurrency is involved, and these
+      # tests query concurrently while another connection commits. -race needs cgo.
+      - name: Integration tests with the race detector
+        env:
+          CGO_ENABLED: 1
+        run: go test -tags=integration -race -timeout 25m ./tests/integration/postgres/...
+
   sqlite:
     name: SQLite adapter
     runs-on: ubuntu-latest
