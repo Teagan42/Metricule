@@ -8,12 +8,43 @@ import (
 	"time"
 )
 
+// FailureMode selects what happens to published series after a failed collection.
+//
+// Mirrors config.FailureMode by value. Duplicated rather than imported because this
+// package depends on no other internal package, which is what keeps it free of
+// configuration and adapter concerns.
+type FailureMode string
+
+const (
+	// Retain exposes the last successful snapshot until MaxStaleAge elapses.
+	Retain FailureMode = "retain"
+	// Drop omits the affected series as soon as a collection fails.
+	Drop FailureMode = "drop"
+)
+
+// Policy bounds how long a failed collection keeps serving its last good result.
+//
+// Neither mode ever substitutes a value: expiry omits series (P3, §8.4).
+type Policy struct {
+	// Mode defaults to Retain when empty.
+	Mode FailureMode
+	// MaxStaleAge is measured from the snapshot's CollectedAt, so it reports the age
+	// of the data rather than the age of the outage. Zero retains nothing.
+	MaxStaleAge time.Duration
+}
+
 // StoreConfig configures an in-memory store.
 type StoreConfig struct {
 	// MaxTotalSeries bounds the series published across every collection group. Zero
 	// disables the bound. Only the store can enforce it, because no single collection
 	// sees the global total (§8.7).
 	MaxTotalSeries int
+
+	// Default applies to any collection absent from Policies.
+	Default Policy
+	// Policies are per-collection overrides, fixed at construction so that a policy
+	// cannot change under a concurrent scrape.
+	Policies map[string]Policy
 }
 
 // MemoryStore holds one immutable snapshot per collection group.
@@ -34,7 +65,15 @@ type MemoryStore struct {
 
 // Holds the published state for one collection group.
 type entry struct {
-	state atomic.Pointer[Snapshot]
+	policy Policy
+	state  atomic.Pointer[state]
+}
+
+// Published state for one collection group. Replaced wholesale, never mutated.
+type state struct {
+	snap *Snapshot
+	// failed marks the last attempt as failed, which is what arms the stale window.
+	failed bool
 }
 
 var _ Store = (*MemoryStore)(nil)
@@ -65,22 +104,79 @@ func (s *MemoryStore) Publish(snap *Snapshot) error {
 	}
 
 	s.total = total
-	e.state.Store(snap)
+	e.state.Store(&state{snap: snap})
 	return nil
 }
 
-func publishedCount(snap *Snapshot) int {
-	if snap == nil {
-		return 0
+// Fail records a failed collection at time at and applies the staleness policy.
+//
+// A collection that has never succeeded has nothing to retain, so this is a no-op.
+func (s *MemoryStore) Fail(collectionID string, at time.Time) error {
+	s.mu.RLock()
+	e := s.entries[collectionID]
+	s.mu.RUnlock()
+	if e == nil {
+		return nil
 	}
-	return snap.SampleCount()
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	prev := e.state.Load()
+	if prev == nil || prev.snap == nil {
+		return nil
+	}
+	if visible(e.policy, prev.snap, at) {
+		e.state.Store(&state{snap: prev.snap, failed: true})
+		return nil
+	}
+
+	// Expired or dropped: release the series rather than holding memory until the
+	// next success.
+	s.total -= prev.snap.SampleCount()
+	e.state.Store(&state{failed: true})
+	return nil
 }
 
-// Fail records a failed collection at time at.
-func (s *MemoryStore) Fail(_ string, _ time.Time) error { return nil }
-
 // Current returns the snapshots visible to a scrape at time now.
-func (s *MemoryStore) Current(_ time.Time) []*Snapshot {
+//
+// Expired retained snapshots are filtered here as well as pruned in Fail, because a
+// scrape can land between expiry and the next collection attempt.
+func (s *MemoryStore) Current(now time.Time) []*Snapshot {
+	entries := s.snapshotIndex()
+
+	out := make([]*Snapshot, 0, len(entries))
+	for _, e := range entries {
+		st := e.state.Load()
+		if st == nil || st.snap == nil {
+			continue
+		}
+		if st.failed && !visible(e.policy, st.snap, now) {
+			continue
+		}
+		out = append(out, st.snap)
+	}
+	return out
+}
+
+// Reports whether a failed collection's last good snapshot may still be exposed.
+func visible(p Policy, snap *Snapshot, now time.Time) bool {
+	if p.Mode == Drop {
+		return false
+	}
+	return now.Sub(snap.CollectedAt) <= p.MaxStaleAge
+}
+
+func publishedCount(st *state) int {
+	if st == nil || st.snap == nil {
+		return 0
+	}
+	return st.snap.SampleCount()
+}
+
+// Returns the entries ordered by collection ID, holding the index lock only long
+// enough to copy pointers.
+func (s *MemoryStore) snapshotIndex() []*entry {
 	s.mu.RLock()
 	ids := make([]string, 0, len(s.entries))
 	entries := make([]*entry, 0, len(s.entries))
@@ -91,14 +187,7 @@ func (s *MemoryStore) Current(_ time.Time) []*Snapshot {
 	s.mu.RUnlock()
 
 	sort.Sort(byID{ids, entries})
-
-	out := make([]*Snapshot, 0, len(entries))
-	for _, e := range entries {
-		if snap := e.state.Load(); snap != nil {
-			out = append(out, snap)
-		}
-	}
-	return out
+	return entries
 }
 
 // Returns the entry for id, creating it on first publication.
@@ -113,10 +202,21 @@ func (s *MemoryStore) lookupOrCreate(id string) *entry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e = s.entries[id]; e == nil {
-		e = &entry{}
+		e = &entry{policy: s.policyFor(id)}
 		s.entries[id] = e
 	}
 	return e
+}
+
+func (s *MemoryStore) policyFor(id string) Policy {
+	p, ok := s.cfg.Policies[id]
+	if !ok {
+		p = s.cfg.Default
+	}
+	if p.Mode == "" {
+		p.Mode = Retain
+	}
+	return p
 }
 
 // Orders exposition deterministically by collection ID.
