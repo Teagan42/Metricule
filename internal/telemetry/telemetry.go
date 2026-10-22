@@ -45,7 +45,16 @@ const (
 	ReasonUnknown         = reason.Unknown
 )
 
-// Trigger labels what caused a refresh.
+// Trigger labels why a refresh attempt is running — not what originally wanted the
+// data. The two differ only for a retry, which is attributed to TriggerRetry rather
+// than inheriting the trigger it descended from.
+//
+// That makes refresh rate readable during an outage, at the cost of not being able to
+// recover a retry's causal ancestor from this family alone. Do not add a second
+// "origin" label to recover it: it would multiply this family's cardinality by the
+// trigger count (§8.7), and counters cannot express per-event lineage anyway. A retry
+// only ever follows a failure, so collection_errors_total already identifies which
+// collections were retrying and why.
 type Trigger string
 
 // Refresh triggers.
@@ -126,7 +135,8 @@ func New(reg prometheus.Registerer, info version.Info) *Metrics {
 		collectionErrors: f.counter("collection_errors_total",
 			"Total failed collections by reason.", "collection", "source", "reason"),
 		collectionRefresh: f.counter("collection_refresh_total",
-			"Total refreshes requested, by what triggered them.", "collection", "reason"),
+			"Total refresh attempts, by why each attempt ran. A retry is attributed to \"retry\", not to the trigger it descended from.",
+			"collection", "reason"),
 		collectionLastSuccess: f.gauge("collection_last_success_timestamp_seconds",
 			"Unix timestamp of the last successful collection.", "collection"),
 		collectionSnapshotAge: f.gauge("collection_snapshot_age_seconds",
