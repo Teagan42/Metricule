@@ -1,0 +1,100 @@
+# SQLite: read-only collection with change-token detection.
+#
+# Mount the database file read-only. SQLite access is read-only in v0.1 (AD-007)
+# and `readonly: true` is enforced regardless of what this file says.
+#
+# WAL databases need the -wal and -shm files readable too, and the containing
+# directory must be readable by the exporter's UID.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: app-sqlite
+  description: Application metrics from a shared SQLite file
+
+server:
+  listen: "0.0.0.0:9108"
+
+defaults:
+  collection:
+    interval: 30s
+    timeout: 5s
+    reconcile_interval: 5m
+  limits:
+    max_series_per_metric: 100
+    max_rows_per_query: 1000
+
+sources:
+  appdb:
+    type: sqlite
+    path: /data/app.db
+    readonly: true
+    busy_timeout: 3s
+    # Paces PRAGMA data_version polling on the observer connection (§10.2).
+    change_check_interval: 2s
+
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: appdb
+
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+
+    # SQLite advertises change tokens, not notifications, so `auto` selects
+    # data_version polling. `notify` would be rejected.
+    collect:
+      mode: auto
+      fallback_interval: 5m
+      watch:
+        tables:
+          - users
+
+    mapping:
+      value: value
+
+  - name: app_sessions_by_tier
+    help: Active sessions by plan tier
+    type: gauge
+    source: appdb
+
+    query:
+      sql: |
+        SELECT tier, COUNT(*) AS value
+        FROM sessions
+        WHERE expires_at > strftime('%s', 'now')
+        GROUP BY tier
+
+    mapping:
+      value: value
+      labels:
+        tier: tier
+      static_labels:
+        datastore: sqlite
+
+    collect:
+      mode: poll
+      interval: 15s
+
+    limits:
+      max_series_per_metric: 10
+
+  - name: app_db_size_bytes
+    help: Size of the application database file
+    type: gauge
+    source: appdb
+
+    query:
+      sql: SELECT page_count * page_size AS value FROM pragma_page_count(), pragma_page_size()
+
+    mapping:
+      value: value
+
+    collect:
+      mode: poll
+      interval: 5m
+
+    # A size reading that stops updating is worse than an absent one here.
+    failure:
+      mode: drop

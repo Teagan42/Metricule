@@ -1,0 +1,124 @@
+# HTTP/JSON: scalar and array extraction with RFC 9535 selectors.
+#
+# allowed_paths is the request allow-list: a metric may only request a path
+# listed there, which stops a configuration change turning the exporter into a
+# generic outbound fetcher (§11.3).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: app-http
+  description: Application status metrics scraped from a JSON endpoint
+
+server:
+  listen: "0.0.0.0:9108"
+
+defaults:
+  collection:
+    interval: 20s
+    timeout: 5s
+  limits:
+    max_series_per_metric: 50
+
+sources:
+  appapi:
+    type: http
+    base_url: https://app.internal:8443
+    timeout: 5s
+    headers:
+      Accept: application/json
+    authentication:
+      type: bearer
+      token:
+        file: /run/secrets/app_api_token
+    allowed_paths:
+      - /api/status
+      - /api/workers
+    max_response_bytes: 262144
+    # Redirects can move a credentialed request to another origin.
+    max_redirects: 0
+    retries: 2
+
+metrics:
+  - name: app_sessions_active
+    help: Currently active application sessions
+    type: gauge
+    source: appapi
+
+    request:
+      method: GET
+      path: /api/status
+
+    mapping:
+      value: "$.sessions.active"
+
+    collect:
+      mode: poll
+      interval: 20s
+
+  - name: app_worker_tasks_active
+    help: Active tasks per worker
+    type: gauge
+    source: appapi
+
+    request:
+      method: GET
+      path: /api/workers
+      params:
+        include: tasks
+
+    # rows selects the repeating element; value and labels are relative to each
+    # selected row.
+    mapping:
+      rows: "$.workers[*]"
+      value: "$.active_tasks"
+      labels:
+        worker: "$.name"
+        queue: "$.queue"
+      # A worker may report null while it is restarting; omit that sample rather
+      # than failing the whole collection.
+      null: omit
+
+    collect:
+      mode: poll
+      interval: 20s
+
+    limits:
+      max_series_per_metric: 25
+
+  - name: app_uptime_seconds
+    help: Reported process uptime
+    type: gauge
+    source: appapi
+
+    request:
+      path: /api/status
+
+    # The endpoint reports milliseconds; base units are seconds (§8.6).
+    mapping:
+      value: "$.uptime_ms"
+      scale: 0.001
+
+    collect:
+      mode: poll
+      interval: 1m
+
+  - name: app_service_state
+    help: Current service operating state
+    type: state_set
+    source: appapi
+
+    request:
+      path: /api/status
+
+    mapping:
+      value: "$.state"
+      states:
+        - starting
+        - running
+        - degraded
+        - stopped
+
+    collect:
+      mode: poll
+      interval: 20s
