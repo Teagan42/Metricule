@@ -70,7 +70,7 @@ requires Agent 0 review.
 
 ```text
 config    -> secrets, source, selector
-source    -> (nothing internal)
+source    -> telemetry
 source/*  -> source, config, selector, telemetry
 collect   -> config, source, snapshot, telemetry
 mapping   -> config, snapshot, telemetry
@@ -82,9 +82,16 @@ telemetry -> version
 
 Three rules make this checkable:
 
-1. **`internal/source` imports no other internal package.** Adapter settings are
+1. **`internal/source` imports only `internal/telemetry`.** Adapter settings are
    plain types with no config or secrets dependency, so `config` can import `source`
-   for capability checks without a cycle. Reversing this edge breaks the build.
+   for capability checks without a cycle. Reversing the `config -> source` edge
+   breaks the build.
+
+   The `telemetry` edge exists so `source.Classified` can name a bounded failure
+   reason without duplicating the enum. It is safe because `telemetry` is a leaf: it
+   imports only `internal/version`, so `config -> source -> telemetry` stays
+   acyclic. Do not add any further import here — the point of this rule is that
+   `source` stays reachable from `config`.
 2. **Adapters never import each other.** `internal/collect` and `internal/mapping`
    never import any `internal/source/*` subpackage either; they see only the
    interfaces in `internal/source` (P7).
