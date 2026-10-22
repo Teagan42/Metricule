@@ -7,10 +7,10 @@ Several entries are deliberate design limits rather than unfinished work; those 
 marked **by design** and will not change. Where a limitation has a planned fix, the
 milestone is named.
 
-> **Status.** This documents v0.1 as designed, so it covers the full adapter set. At
-> the time of writing the collection engine is not yet wired to the CLI — `metricule
-> serve` cannot collect — and the PostgreSQL adapter is merging. Treat the PostgreSQL
-> entries as describing that adapter rather than something you can run today.
+> **Status.** Describes v0.1 as designed, covering the full adapter set. Collection
+> works end to end as of the runtime wiring; change-driven refresh (`mode: notify`
+> and SQLite change tokens) is still M2, so the entries marked **M1 limitation**
+> remain current.
 
 ## Observability semantics
 
@@ -192,15 +192,38 @@ uses merge keys.
 
 ## Operations
 
-### Readiness reflects startup, not collection health
+### `/readyz` does not mean "the data is current"
 
-`/readyz` reports that configuration compiled and subsystems initialized. It does not
-by itself wait for a first successful collection. A source that has never responded
-leaves its metrics absent while the exporter reports ready.
+`/readyz` reports that configuration compiled, subsystems initialized, and every
+collection has been **attempted** — not that any succeeded. A process whose every
+collection has failed reads ready.
+
+That is deliberate (§7.6's policy-defined degraded readiness): a single dead source
+must not make a working exporter look broken, especially when `/metrics` is already
+serving valid exposition for the sources that do respond. But it has a consequence
+worth stating plainly, because getting it wrong fails silently:
+
+**Wiring `/readyz` into a load balancer and inferring that served data is fresh is
+incorrect.** Freshness is answered by `metricule_collection_success` and
+`metricule_collection_snapshot_age_seconds`, both of which are exposed. Alert on
+those, not on readiness.
 
 `/metrics` always serves a valid exposition if the process is healthy; collection
 failures surface through `metricule_collection_*` rather than by failing the scrape
 (§13.1).
+
+### The refresh trigger label is `trigger`, not `reason`
+
+`metricule_collection_refresh_total` labels refresh causes as `trigger`
+(`startup`, `schedule`, `notify`, `token`, `reconnect`, `reconcile`, `retry`), while
+`reason` on the error and mapping families carries *failure* causes (`timeout`,
+`connection`, …). They are separate vocabularies and must not be joined.
+
+A retry is attributed to `trigger="retry"` rather than inheriting the trigger it
+descended from, so a retry's causal ancestor is not recoverable from this family
+alone. That is intentional: counters cannot express per-event lineage, and a retry
+only ever follows a failure, so `metricule_collection_errors_total` already
+identifies what was retrying and why.
 
 ### Adapter failure reasons can silently become `unknown`
 

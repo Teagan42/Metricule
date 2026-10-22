@@ -23,6 +23,7 @@ var allowedLabels = map[string]bool{
 	"collection": true,
 	"reason":     true,
 	"result":     true,
+	"trigger":    true,
 	"mode":       true,
 	"path":       true,
 	"code":       true,
