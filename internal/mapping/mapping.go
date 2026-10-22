@@ -45,6 +45,7 @@ type Mapper struct {
 	spec   Spec
 	wire   snapshot.Type
 	labels []string
+	scale  float64
 }
 
 // Compile validates a mapping and returns a reusable mapper.
@@ -56,7 +57,12 @@ func Compile(spec Spec) (*Mapper, error) {
 	if err != nil {
 		return nil, fmt.Errorf("metric %q: %w", spec.Metric.Name, err)
 	}
-	m := &Mapper{spec: spec, wire: wire}
+	m := &Mapper{spec: spec, wire: wire, scale: spec.Metric.Mapping.Scale}
+	if m.scale == 0 {
+		// An unset scale means 1. Multiplying by the zero value would publish a
+		// fabricated zero (AD-010).
+		m.scale = 1
+	}
 	for name := range spec.Metric.Mapping.Labels {
 		m.labels = append(m.labels, name)
 	}
@@ -150,7 +156,7 @@ func (m *Mapper) rowSamples(row source.Row) ([]snapshot.Sample, error) {
 	if err != nil {
 		return nil, m.conversionError(fieldValue, err)
 	}
-	return []snapshot.Sample{{Labels: labels, Value: v * m.spec.Metric.Mapping.Scale}}, nil
+	return []snapshot.Sample{{Labels: labels, Value: v * m.scale}}, nil
 }
 
 // Expands one row into a gauge per configured state: 1 for the active state, 0 for
