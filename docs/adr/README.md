@@ -15,6 +15,7 @@ new record here.
 | [0005](0005-capability-declaration-split.md) | Capability declaration is separate from adapter registration | Accepted |
 | [0006](0006-stdlib-cli.md) | Standard library flag package instead of a CLI framework | Accepted |
 | [0007](0007-schema-validation-parity.md) | JSON Schema is a subset of Go validation | Accepted |
+| [0008](0008-document-adapters-resolve-selectors.md) | Document adapters resolve selectors, not the mapping engine | Accepted |
 
 ## Format
 
