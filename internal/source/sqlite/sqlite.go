@@ -31,10 +31,8 @@ const (
 	maxOpenConns = 4
 	maxIdleConns = 2
 
-	// Reaps idle connections so a cached handle does not pin a replaced or
-	// deleted inode. Deliberately not SetConnMaxLifetime: §10.2 needs one
-	// long-lived observer connection in M2, and a lifetime cap would recycle it,
-	// which silently invalidates data_version comparison.
+	// Reaps idle connections so none pins a replaced inode. Not a lifetime cap:
+	// §10.2 needs one long-lived observer connection in M2.
 	idleTimeout = time.Minute
 
 	// Backstop for a caller that supplies no deadline. SQLiteSettings carries no
@@ -57,14 +55,12 @@ func init() {
 
 // Source is a read-only SQLite adapter instance. Safe for concurrent use.
 type Source struct {
-	id                  string
-	path                string
-	dsn                 string
-	changeCheckInterval time.Duration
+	id   string
+	path string
+	dsn  string
 
-	// Guards the connection pool and the identity of the file it was opened on.
-	// Queries run outside it: database/sql is already concurrency safe, and a
-	// racing reopen only closes connections once they are returned.
+	// Queries run outside this lock. database/sql is concurrency safe, and a
+	// racing reopen closes connections only once they are returned.
 	mu     sync.Mutex
 	db     *sql.DB
 	ident  os.FileInfo
@@ -89,12 +85,9 @@ func New(settings source.Settings) (source.Source, error) {
 	if err != nil {
 		return nil, fmt.Errorf("source %q: resolve path %q: %w", settings.ID, cfg.Path, err)
 	}
-	return &Source{
-		id:                  settings.ID,
-		path:                abs,
-		dsn:                 dsn,
-		changeCheckInterval: cfg.ChangeCheckInterval,
-	}, nil
+	// ChangeCheckInterval is deliberately unread: the observer that consumes it
+	// is M2 (§10.2). M1 collects by polling only.
+	return &Source{id: settings.ID, path: abs, dsn: dsn}, nil
 }
 
 // ID returns the configured source name.
