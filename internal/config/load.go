@@ -53,6 +53,15 @@ func decode(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
+	// A second pass records which paths the document stated. yaml.Node.Decode
+	// ignores KnownFields, so the strict decode above cannot also yield the node
+	// tree; parsing twice at startup is cheaper than losing unknown-key rejection.
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	cfg.present = collectPresent(&root)
+
 	// A second document would be silently ignored, hiding half the configuration.
 	var extra yaml.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
