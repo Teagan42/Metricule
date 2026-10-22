@@ -73,7 +73,7 @@ config    -> secrets, source, selector
 source    -> (nothing internal)
 source/*  -> source, config, selector, telemetry
 collect   -> config, source, snapshot, telemetry
-mapping   -> config, snapshot, selector, telemetry
+mapping   -> config, snapshot, telemetry
 snapshot  -> (nothing internal)
 exporter  -> config, snapshot, telemetry
 runtime   -> config, source, collect, mapping, snapshot, telemetry

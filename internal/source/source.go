@@ -127,6 +127,21 @@ type QueryDefinition struct {
 	Path    string
 	Params  map[string]string
 	Headers map[string]string
+
+	// Rows, Value, and Labels are selectors for adapters that read structured
+	// documents rather than rows. A document adapter resolves them into a
+	// normalized ResultSet so the mapping engine performs plain column lookups for
+	// every source type (P7, §12).
+	//
+	// Column keys are the selector strings themselves, so `row[mapping.Value]`
+	// resolves identically whether Value is a SQL column name or a JSONPath
+	// expression. Renaming to canonical columns would force the mapper to know
+	// which source it came from.
+	//
+	// Empty Rows means the document yields a single row.
+	Rows   string
+	Value  string
+	Labels map[string]string
 }
 
 // QuerySpec is a compiled, adapter-specific query. Opaque outside its adapter.
@@ -158,4 +173,11 @@ type Column struct {
 }
 
 // Row maps column name to value. Values are Go scalars, nil, or []byte.
+//
+// An absent key and a present nil value are different conditions and must stay
+// distinguishable: a missing field is a mapping error, while a present null is
+// governed by the configured null policy (§12.4). Use the two-value form to tell
+// them apart; no sentinel value is required.
+//
+//	v, ok := row[name]  // ok reports presence, v == nil reports a null value
 type Row map[string]any
