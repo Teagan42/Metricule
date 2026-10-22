@@ -2,8 +2,9 @@ package source
 
 import (
 	"errors"
+	"time"
 
-	"github.com/teagan42/metricule/internal/telemetry"
+	"github.com/teagan42/metricule/internal/telemetry/reason"
 )
 
 // Classified is implemented by adapter errors that can name their own failure
@@ -15,42 +16,73 @@ import (
 // interface; consumers reach it with errors.As.
 //
 // Consumers must still bound the label space: a Reason outside the set they accept
-// collapses to telemetry.ReasonUnknown rather than widening the label dimension
-// (§13).
+// collapses to reason.Unknown rather than widening the label dimension (§13).
 type Classified interface {
 	error
 
 	// Reason returns the bounded label for this failure.
-	Reason() telemetry.Reason
+	Reason() reason.Reason
 }
 
-// ReasonOf extracts an adapter-reported reason, falling back to ReasonUnknown.
+// ReasonOf extracts an adapter-reported reason, falling back to Unknown.
 //
 // Does not validate the value against a caller's allowlist; apply that separately
 // so each consumer controls its own label space.
-func ReasonOf(err error) telemetry.Reason {
+func ReasonOf(err error) reason.Reason {
 	var c Classified
 	if errors.As(err, &c) {
 		return c.Reason()
 	}
-	return telemetry.ReasonUnknown
+	return reason.Unknown
 }
 
-// Diagnosable is implemented by sources that expose runtime counters.
+// Diagnosable is implemented by sources that expose their health state.
 //
-// Optional. Adapters deliberately receive no *telemetry.Metrics — Settings carries
-// no telemetry handle — so the component running the health loop reads these and
-// publishes the source-level families itself.
+// Optional. Adapters deliberately receive no telemetry handle — Settings carries
+// none — so whoever runs the health loop reads this and publishes the source-level
+// families itself.
 type Diagnosable interface {
 	Diagnostics() Diagnostics
 }
 
-// Diagnostics are adapter-reported runtime counters.
+// Diagnostics is an adapter's self-reported health state.
 //
-// Counters are monotonic totals for the life of the source. A publisher tracks the
-// previous value and adds the delta, so a restart cannot make a counter go backwards.
+// Uniform across adapters so `/readyz` and `metricule test` can show per-source
+// detail without knowing concrete types (§13.1, §15.2). Every field is something
+// any source has: reachability, a last error, a failure streak, and a loggable
+// target. A field an adapter cannot populate stays zero.
+//
+// Target and LastError MUST be safe to log and display. Credentials are resolved
+// before an adapter is constructed, so an adapter must redact them here (§14.3).
 type Diagnostics struct {
-	// Reconnects totals successful reconnections. Each one forces reconciliation,
-	// because delivery during a disconnect is not durable (AD-005).
+	// Target identifies the source for operators: a credential-free
+	// "host:port/database", a file path, or a base URL.
+	Target string
+
+	// Up reports reachability at CheckedAt.
+	Up bool
+
+	// CheckedAt is the last health check. Zero until the first check.
+	CheckedAt time.Time
+
+	// LastSuccess is the last successful check. Zero until the first success.
+	// Distinguishes "never reachable" from "was reachable, now is not" (P6).
+	LastSuccess time.Time
+
+	// ConsecutiveFailures resets on any successful check.
+	ConsecutiveFailures int
+
+	// Reconnects totals successful reconnections and is monotonic for the life of
+	// the source: not reset by Close, nor by a later Open. A publisher derives a
+	// counter delta from it, so resetting it would make the counter move backwards.
+	// Each reconnection forces reconciliation, because delivery during a
+	// disconnect is not durable (AD-005).
 	Reconnects uint64
+
+	// LastError is retained after recovery, so a transient failure remains
+	// diagnosable once the source is healthy again.
+	LastError error
+
+	// Reason classifies LastError.
+	Reason reason.Reason
 }

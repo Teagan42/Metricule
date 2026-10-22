@@ -70,8 +70,10 @@ requires Agent 0 review.
 
 ```text
 config    -> secrets, source, selector
-source    -> telemetry
+source    -> telemetry/reason
 source/*  -> source, config, selector, telemetry
+telemetry -> telemetry/reason, version
+telemetry/reason -> (nothing)
 collect   -> config, source, snapshot, telemetry
 mapping   -> config, snapshot, telemetry
 snapshot  -> (nothing internal)
@@ -82,16 +84,17 @@ telemetry -> version
 
 Three rules make this checkable:
 
-1. **`internal/source` imports only `internal/telemetry`.** Adapter settings are
-   plain types with no config or secrets dependency, so `config` can import `source`
-   for capability checks without a cycle. Reversing the `config -> source` edge
-   breaks the build.
+1. **`internal/source` imports only `internal/telemetry/reason`.** Adapter settings
+   are plain types with no config or secrets dependency, so `config` can import
+   `source` for capability checks without a cycle. Reversing the `config -> source`
+   edge breaks the build.
 
-   The `telemetry` edge exists so `source.Classified` can name a bounded failure
-   reason without duplicating the enum. It is safe because `telemetry` is a leaf: it
-   imports only `internal/version`, so `config -> source -> telemetry` stays
-   acyclic. Do not add any further import here — the point of this rule is that
-   `source` stays reachable from `config`.
+   `source` must **not** import `internal/telemetry` itself. The test is not
+   acyclicity — that edge would be acyclic — it is coupling: `telemetry` imports
+   `client_golang`, so importing it would make every adapter transitively depend on
+   the Prometheus client and turn `source` from a data contract into one carrying an
+   exporter concern. `telemetry/reason` exists precisely to carry the shared failure
+   vocabulary with no dependencies at all. Keep it that way (ADR 0009).
 2. **Adapters never import each other.** `internal/collect` and `internal/mapping`
    never import any `internal/source/*` subpackage either; they see only the
    interfaces in `internal/source` (P7).
