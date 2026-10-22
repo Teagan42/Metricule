@@ -36,29 +36,56 @@ const (
 	pgRecoveryBudget = 90 * time.Second
 )
 
-// Starts a PostgreSQL container and returns its DSN.
-func startPostgres(t *testing.T) (*tcpostgres.PostgresContainer, string) {
-	t.Helper()
-	ctx := context.Background()
-
+func runPostgres(ctx context.Context) (*tcpostgres.PostgresContainer, error) {
 	startCtx, cancel := context.WithTimeout(ctx, pgStartupWait)
 	defer cancel()
 
-	ctr, err := tcpostgres.Run(startCtx, pgImage,
+	return tcpostgres.Run(startCtx, pgImage,
 		tcpostgres.WithDatabase("app"),
 		tcpostgres.WithUsername("owner"),
 		tcpostgres.WithPassword("owner-secret"),
 		tcpostgres.BasicWaitStrategies(),
 	)
+}
+
+// Starts a container owned by one test, for cases that disturb the whole server.
+func startPostgres(t *testing.T) (*tcpostgres.PostgresContainer, string) {
+	t.Helper()
+	ctr, err := runPostgres(context.Background())
 	testcontainers.CleanupContainer(t, ctr)
 	if err != nil {
 		t.Fatalf("start postgres: %v", err)
 	}
-	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
+	dsn, err := ctr.ConnectionString(context.Background(), "sslmode=disable")
 	if err != nil {
 		t.Fatalf("connection string: %v", err)
 	}
 	return ctr, dsn
+}
+
+// Starts the container shared by tests that isolate themselves by table name.
+//
+// One container per test exhausts the Docker daemon's request budget on a laptop
+// and on a CI runner alike. The Testcontainers reaper terminates it when the test
+// binary exits, so it needs no per-test cleanup.
+var sharedPostgres = sync.OnceValues(func() (*tcpostgres.PostgresContainer, error) {
+	return runPostgres(context.Background())
+})
+
+// Returns a DSN on the shared server tagged with a per-test application_name, so
+// a test recognizes its own backends in pg_stat_activity.
+func sharedDSN(t *testing.T, appName string) string {
+	t.Helper()
+	ctr, err := sharedPostgres()
+	if err != nil {
+		t.Fatalf("start shared postgres: %v", err)
+	}
+	dsn, err := ctr.ConnectionString(context.Background(),
+		"sslmode=disable", "application_name="+appName)
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	return dsn
 }
 
 // Forwards a stable local address to the container's current endpoint.
@@ -196,11 +223,15 @@ func scalar(t *testing.T, rs source.ResultSet) any {
 	return v
 }
 
-func seedJobs(t *testing.T, dsn string) {
+// Creates a jobs table of the given name with three rows, two of them queued.
+//
+// Tests on the shared server each own a distinct table.
+func seedJobs(t *testing.T, dsn, table string) {
 	t.Helper()
 	adminExec(t, dsn,
-		`CREATE TABLE jobs (id bigserial PRIMARY KEY, state text NOT NULL)`,
-		`INSERT INTO jobs (state) VALUES ('queued'), ('queued'), ('running')`,
+		`DROP TABLE IF EXISTS `+table,
+		`CREATE TABLE `+table+` (id bigserial PRIMARY KEY, state text NOT NULL)`,
+		`INSERT INTO `+table+` (state) VALUES ('queued'), ('queued'), ('running')`,
 	)
 }
 
@@ -216,11 +247,11 @@ func reasonOf(t *testing.T, err error) telemetry.Reason {
 // §20.2 1-3: committed inserts, updates, and deletes change the aggregate.
 func TestPostgresQueryReflectsCommittedWrites(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
-	seedJobs(t, dsn)
+	dsn := sharedDSN(t, "writes")
+	seedJobs(t, dsn, "jobs_writes")
 	s := openSource(t, dsn, nil)
 
-	const sql = `SELECT count(*) AS value FROM jobs WHERE state = 'queued'`
+	const sql = `SELECT count(*) AS value FROM jobs_writes WHERE state = 'queued'`
 	assertCount := func(want int64) {
 		t.Helper()
 		rs, err := query(context.Background(), t, s, sql, 10)
@@ -233,21 +264,20 @@ func TestPostgresQueryReflectsCommittedWrites(t *testing.T) {
 	}
 
 	assertCount(2)
-	adminExec(t, dsn, `INSERT INTO jobs (state) VALUES ('queued')`)
+	adminExec(t, dsn, `INSERT INTO jobs_writes (state) VALUES ('queued')`)
 	assertCount(3)
-	adminExec(t, dsn, `UPDATE jobs SET state = 'done' WHERE state = 'queued'`)
+	adminExec(t, dsn, `UPDATE jobs_writes SET state = 'done' WHERE state = 'queued'`)
 	assertCount(0)
-	adminExec(t, dsn, `INSERT INTO jobs (state) VALUES ('queued'), ('queued')`)
+	adminExec(t, dsn, `INSERT INTO jobs_writes (state) VALUES ('queued'), ('queued')`)
 	assertCount(2)
-	adminExec(t, dsn, `DELETE FROM jobs WHERE state = 'queued'`)
+	adminExec(t, dsn, `DELETE FROM jobs_writes WHERE state = 'queued'`)
 	assertCount(0)
 }
 
 // Columns and values normalize into the ResultSet contract.
 func TestPostgresMapsResultTypes(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
-	s := openSource(t, dsn, nil)
+	s := openSource(t, sharedDSN(t, "types"), nil)
 
 	rs, err := query(context.Background(), t, s, `
 		SELECT 42::bigint          AS as_int8,
@@ -307,8 +337,7 @@ func TestPostgresMapsResultTypes(t *testing.T) {
 // §8.7: exceeding max_rows errors instead of truncating.
 func TestPostgresRejectsOversizedResults(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
-	s := openSource(t, dsn, nil)
+	s := openSource(t, sharedDSN(t, "oversized"), nil)
 
 	rs, err := query(context.Background(), t, s,
 		`SELECT i AS value FROM generate_series(1, 50) AS i`, 10)
@@ -328,10 +357,38 @@ func TestPostgresRejectsOversizedResults(t *testing.T) {
 	}
 }
 
+// The extended protocol refuses multiple statements, so a smuggled write cannot
+// ride along behind a SELECT (§14.5).
+func TestPostgresRejectsMultipleStatements(t *testing.T) {
+	t.Parallel()
+	dsn := sharedDSN(t, "multi_statement")
+	seedJobs(t, dsn, "jobs_multi")
+	s := openSource(t, dsn, nil)
+
+	_, err := query(context.Background(), t, s,
+		`SELECT 1 AS value; INSERT INTO jobs_multi (state) VALUES ('smuggled')`, 10)
+	if err == nil {
+		t.Fatal("a multi-statement query succeeded")
+	}
+	if got := reasonOf(t, err); got != telemetry.ReasonQuery {
+		t.Errorf("reason = %q, want %q", got, telemetry.ReasonQuery)
+	}
+
+	rs, err := query(context.Background(), t, s,
+		`SELECT count(*) AS value FROM jobs_multi WHERE state = 'smuggled'`, 10)
+	if err != nil {
+		t.Fatalf("verify query: %v", err)
+	}
+	if got := scalar(t, rs); got != int64(0) {
+		t.Errorf("%v smuggled rows were written", got)
+	}
+}
+
 // §20.2 11: a query beyond query_timeout fails as a timeout and frees the pool.
 func TestPostgresCollectionTimeout(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
+	const appName = "timeout"
+	dsn := sharedDSN(t, appName)
 	s := openSource(t, dsn, func(set *source.PostgresSettings) {
 		set.QueryTimeout = 750 * time.Millisecond
 	})
@@ -348,7 +405,7 @@ func TestPostgresCollectionTimeout(t *testing.T) {
 		t.Errorf("reason = %q, want %q", got, telemetry.ReasonTimeout)
 	}
 
-	assertNoSleepingBackends(t, dsn)
+	assertNoSleepingBackends(t, dsn, appName)
 
 	if _, err := query(context.Background(), t, s, `SELECT 1 AS value`, 10); err != nil {
 		t.Errorf("Query after timeout: %v", err)
@@ -358,7 +415,8 @@ func TestPostgresCollectionTimeout(t *testing.T) {
 // §18 Agent 4: cancelling the collection context stops the server-side query.
 func TestPostgresQueryCancellation(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
+	const appName = "cancellation"
+	dsn := sharedDSN(t, appName)
 	s := openSource(t, dsn, func(set *source.PostgresSettings) {
 		set.QueryTimeout = 60 * time.Second
 	})
@@ -381,15 +439,15 @@ func TestPostgresQueryCancellation(t *testing.T) {
 		t.Errorf("reason = %q, want %q", got, telemetry.ReasonTimeout)
 	}
 
-	assertNoSleepingBackends(t, dsn)
+	assertNoSleepingBackends(t, dsn, appName)
 
 	if _, err := query(context.Background(), t, s, `SELECT 1 AS value`, 10); err != nil {
 		t.Errorf("Query after cancellation: %v", err)
 	}
 }
 
-// Fails unless every abandoned pg_sleep backend has gone.
-func assertNoSleepingBackends(t *testing.T, dsn string) {
+// Fails unless every abandoned pg_sleep backend of this test has gone.
+func assertNoSleepingBackends(t *testing.T, dsn, appName string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -405,8 +463,9 @@ func assertNoSleepingBackends(t *testing.T, dsn string) {
 	for time.Now().Before(deadline) {
 		err = conn.QueryRow(ctx, `
 			SELECT count(*) FROM pg_stat_activity
-			WHERE query LIKE '%pg\_sleep%' AND pid <> pg_backend_pid() AND state = 'active'
-		`).Scan(&remaining)
+			WHERE application_name = $1 AND state = 'active'
+			  AND query LIKE '%pg\_sleep%' AND pid <> pg_backend_pid()
+		`, appName).Scan(&remaining)
 		if err != nil {
 			t.Fatalf("inspect pg_stat_activity: %v", err)
 		}
@@ -421,7 +480,7 @@ func assertNoSleepingBackends(t *testing.T, dsn string) {
 // §20.2 7: a database restart must not require a Metricule restart.
 func TestPostgresSurvivesDatabaseRestart(t *testing.T) {
 	ctr, dsn := startPostgres(t)
-	seedJobs(t, dsn)
+	seedJobs(t, dsn, "jobs_restart")
 
 	// The source addresses the proxy, so its DSN survives the republish.
 	proxy := startProxy(t, func() (string, error) {
@@ -432,7 +491,7 @@ func TestPostgresSurvivesDatabaseRestart(t *testing.T) {
 		set.QueryTimeout = 3 * time.Second
 	})
 
-	const sql = `SELECT count(*) AS value FROM jobs`
+	const sql = `SELECT count(*) AS value FROM jobs_restart`
 	if _, err := query(context.Background(), t, s, sql, 10); err != nil {
 		t.Fatalf("Query before restart: %v", err)
 	}
@@ -494,13 +553,15 @@ func waitFor(budget time.Duration, fn func() error) error {
 // §14.5 and §20.2 10: writes are rejected by the transaction and by privileges.
 func TestPostgresReadOnlyEnforcement(t *testing.T) {
 	t.Parallel()
-	_, ownerDSN := startPostgres(t)
-	seedJobs(t, ownerDSN)
+	ownerDSN := sharedDSN(t, "readonly_owner")
+	const table = "jobs_readonly"
+	seedJobs(t, ownerDSN, table)
 	adminExec(t, ownerDSN,
+		`DROP ROLE IF EXISTS reader`,
 		`CREATE ROLE reader LOGIN PASSWORD 'reader-secret'`,
 		`GRANT CONNECT ON DATABASE app TO reader`,
 		`GRANT USAGE ON SCHEMA public TO reader`,
-		`GRANT SELECT ON ALL TABLES IN SCHEMA public TO reader`,
+		`GRANT SELECT ON `+table+` TO reader`,
 	)
 	readerDSN := strings.Replace(ownerDSN, "owner:owner-secret@", "reader:reader-secret@", 1)
 	if readerDSN == ownerDSN {
@@ -511,7 +572,7 @@ func TestPostgresReadOnlyEnforcement(t *testing.T) {
 	// enforcement point independent of the account's grants.
 	t.Run("owner credentials cannot write", func(t *testing.T) {
 		s := openSource(t, ownerDSN, nil)
-		_, err := query(context.Background(), t, s, `INSERT INTO jobs (state) VALUES ('injected')`, 10)
+		_, err := query(context.Background(), t, s, `INSERT INTO jobs_readonly (state) VALUES ('injected')`, 10)
 		if err == nil {
 			t.Fatal("INSERT succeeded inside a read-only transaction")
 		}
@@ -525,7 +586,7 @@ func TestPostgresReadOnlyEnforcement(t *testing.T) {
 
 	t.Run("read-only credentials select", func(t *testing.T) {
 		s := openSource(t, readerDSN, nil)
-		rs, err := query(context.Background(), t, s, `SELECT count(*) AS value FROM jobs`, 10)
+		rs, err := query(context.Background(), t, s, `SELECT count(*) AS value FROM jobs_readonly`, 10)
 		if err != nil {
 			t.Fatalf("Query as reader: %v", err)
 		}
@@ -536,7 +597,7 @@ func TestPostgresReadOnlyEnforcement(t *testing.T) {
 
 	t.Run("read-only credentials cannot write", func(t *testing.T) {
 		s := openSource(t, readerDSN, nil)
-		_, err := query(context.Background(), t, s, `INSERT INTO jobs (state) VALUES ('injected')`, 10)
+		_, err := query(context.Background(), t, s, `INSERT INTO jobs_readonly (state) VALUES ('injected')`, 10)
 		if err == nil {
 			t.Fatal("INSERT as reader succeeded")
 		}
@@ -554,7 +615,7 @@ func TestPostgresReadOnlyEnforcement(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 	var injected int64
-	if err := conn.QueryRow(ctx, `SELECT count(*) FROM jobs WHERE state = 'injected'`).Scan(&injected); err != nil {
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM jobs_readonly WHERE state = 'injected'`).Scan(&injected); err != nil {
 		t.Fatalf("verify table: %v", err)
 	}
 	if injected != 0 {
@@ -566,12 +627,13 @@ func TestPostgresReadOnlyEnforcement(t *testing.T) {
 // leak into the reader's snapshot.
 func TestPostgresRapidWritesDuringSlowQuery(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
+	dsn := sharedDSN(t, "rapid_writes")
 	adminExec(t, dsn,
-		`CREATE TABLE events (id bigserial PRIMARY KEY, at timestamptz DEFAULT now())`,
-		`INSERT INTO events DEFAULT VALUES`,
-		`INSERT INTO events DEFAULT VALUES`,
-		`INSERT INTO events DEFAULT VALUES`,
+		`DROP TABLE IF EXISTS events_rapid`,
+		`CREATE TABLE events_rapid (id bigserial PRIMARY KEY, at timestamptz DEFAULT now())`,
+		`INSERT INTO events_rapid DEFAULT VALUES`,
+		`INSERT INTO events_rapid DEFAULT VALUES`,
+		`INSERT INTO events_rapid DEFAULT VALUES`,
 	)
 	const seeded = 3
 	s := openSource(t, dsn, func(set *source.PostgresSettings) {
@@ -593,7 +655,7 @@ func TestPostgresRapidWritesDuringSlowQuery(t *testing.T) {
 		committed := 0
 		deadline := time.Now().Add(3 * time.Second)
 		for time.Now().Before(deadline) {
-			if _, err := conn.Exec(ctx, `INSERT INTO events DEFAULT VALUES`); err != nil {
+			if _, err := conn.Exec(ctx, `INSERT INTO events_rapid DEFAULT VALUES`); err != nil {
 				break
 			}
 			committed++
@@ -604,7 +666,7 @@ func TestPostgresRapidWritesDuringSlowQuery(t *testing.T) {
 	// The statement's snapshot is fixed before pg_sleep returns, so commits that
 	// land during the sleep must stay invisible to this collection.
 	rs, err := query(ctx, t, s,
-		`SELECT pg_sleep(4) IS NULL AS slept, (SELECT count(*) FROM events) AS value`, 1000)
+		`SELECT pg_sleep(4) IS NULL AS slept, (SELECT count(*) FROM events_rapid) AS value`, 1000)
 	if err != nil {
 		t.Fatalf("slow Query: %v", err)
 	}
@@ -618,7 +680,7 @@ func TestPostgresRapidWritesDuringSlowQuery(t *testing.T) {
 	}
 
 	// A later collection sees everything the writer committed.
-	after, err := query(ctx, t, s, `SELECT count(*) AS value FROM events`, 1_000_000)
+	after, err := query(ctx, t, s, `SELECT count(*) AS value FROM events_rapid`, 1_000_000)
 	if err != nil {
 		t.Fatalf("Query after writes: %v", err)
 	}
@@ -630,7 +692,8 @@ func TestPostgresRapidWritesDuringSlowQuery(t *testing.T) {
 // P5: concurrent collections never exceed the configured pool bound.
 func TestPostgresPoolIsBounded(t *testing.T) {
 	t.Parallel()
-	_, dsn := startPostgres(t)
+	const appName = "pool_bound"
+	dsn := sharedDSN(t, appName)
 	const maxOpen = 3
 	s := openSource(t, dsn, func(set *source.PostgresSettings) {
 		set.MaxOpen = maxOpen
@@ -662,8 +725,9 @@ func TestPostgresPoolIsBounded(t *testing.T) {
 			}
 			var backends int64
 			if err := conn.QueryRow(ctx, `
-				SELECT count(*) FROM pg_stat_activity WHERE application_name = 'metricule'
-			`).Scan(&backends); err != nil {
+				SELECT count(*) FROM pg_stat_activity
+				WHERE application_name = $1 AND pid <> pg_backend_pid()
+			`, appName).Scan(&backends); err != nil {
 				return
 			}
 			observed <- backends

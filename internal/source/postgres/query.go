@@ -130,7 +130,9 @@ func (s *Source) Query(ctx context.Context, req source.QueryRequest) (source.Res
 
 	for rows.Next() {
 		if len(result.Rows) >= req.MaxRows {
-			rows.Close()
+			// Cancel before Close: closing a live result set drains the remaining
+			// rows off the connection, which is the cost this limit exists to avoid.
+			cancel()
 			return source.ResultSet{}, newError("query", telemetry.ReasonResultTooLarge,
 				fmt.Errorf("metric %q on source %q: more than %d rows: %w",
 					compiled.metric, s.id, req.MaxRows, ErrResultTooLarge))
