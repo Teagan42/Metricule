@@ -11,13 +11,16 @@ import (
 // Conversion failures never quote the offending value: a result field may hold
 // sensitive application data (§12.3).
 var (
-	errNotNumeric  = errors.New("value is not numeric")
 	errNotFinite   = errors.New("numeric value is not finite")
 	errNotScalar   = errors.New("value is not a scalar")
 	errNumString   = errors.New("string value is not a valid number")
 	errNullValue   = errors.New("value is null")
 	errUnsupported = errors.New("unsupported value type")
 )
+
+// errOmitSample signals that the null policy dropped one sample (§12.4). Internal:
+// it never reaches a caller.
+var errOmitSample = errors.New("sample omitted by null policy")
 
 // Converts a result field into a sample value (§12.2).
 func toFloat(v any) (float64, error) {

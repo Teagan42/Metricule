@@ -2,10 +2,15 @@
 //
 // Mapping is the only place that interprets a metric's declared type: a state_set
 // lowers to gauges here, so nothing downstream needs to know the abstraction exists
-// (§8.5). It holds no source-specific logic and sees only source.ResultSet (P7).
+// (§8.5).
+//
+// Every mapping field is a plain key into source.Row, for every source type. Document
+// adapters resolve their selectors and key the resolved columns by the selector string
+// (ADR 0008), so this package branches on no source type and imports no adapter (P7).
 package mapping
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,31 +21,12 @@ import (
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
-// Style selects how mapping fields are read.
-type Style string
-
-const (
-	// StyleColumns reads mapping fields as result column names. Used by SQL sources.
-	StyleColumns Style = "columns"
-	// StyleSelectors reads mapping fields as RFC 9535 selectors. Used by JSON sources.
-	StyleSelectors Style = "selectors"
-)
-
-// StyleFor reports the mapping style a source type uses.
-func StyleFor(t config.SourceType) Style {
-	if t == config.SourceHTTP {
-		return StyleSelectors
-	}
-	return StyleColumns
-}
-
 // Spec is the compile-time input for one metric family.
 type Spec struct {
 	// CollectionID identifies the owning collection group for telemetry and snapshots.
 	CollectionID string
 	SourceID     string
 	Metric       config.Metric
-	Style        Style
 	// Limits are the metric's effective cardinality bounds (§8.7).
 	Limits config.Limits
 }
@@ -86,7 +72,10 @@ func (m *Mapper) Map(rs source.ResultSet) (snapshot.Family, error) {
 	}
 	for _, row := range rs.Rows {
 		s, err := m.sample(row)
-		if err != nil {
+		switch {
+		case errors.Is(err, errOmitSample):
+			continue
+		case err != nil:
 			return snapshot.Family{}, err
 		}
 		fam.Samples = append(fam.Samples, s)
@@ -105,7 +94,7 @@ func (m *Mapper) sample(row source.Row) (snapshot.Sample, error) {
 	}
 	v, err := toFloat(raw)
 	if err != nil {
-		return snapshot.Sample{}, m.errorf("value", telemetry.ReasonConversion, err.Error())
+		return snapshot.Sample{}, m.conversionError("value", err)
 	}
 
 	labels := make([]snapshot.Label, 0, len(m.labels)+len(mp.StaticLabels))
@@ -116,7 +105,7 @@ func (m *Mapper) sample(row source.Row) (snapshot.Sample, error) {
 		}
 		s, err := toLabelValue(lv)
 		if err != nil {
-			return snapshot.Sample{}, m.errorf("labels."+name, telemetry.ReasonConversion, err.Error())
+			return snapshot.Sample{}, m.conversionError("labels."+name, err)
 		}
 		labels = append(labels, snapshot.Label{Name: name, Value: s})
 	}
@@ -129,13 +118,27 @@ func (m *Mapper) sample(row source.Row) (snapshot.Sample, error) {
 }
 
 // Reads one mapping field from a row.
+//
+// Absence and a present null are different conditions: absence is a mapping error,
+// while a null follows the configured policy (ADR 0008, §12.4).
 func (m *Mapper) lookup(row source.Row, field, mappingField string) (any, error) {
 	v, ok := row[field]
 	if !ok {
 		return nil, m.errorf(mappingField, telemetry.ReasonMissingField,
-			fmt.Sprintf("result has no column %q", field))
+			fmt.Sprintf("result has no field %q", field))
 	}
 	return v, nil
+}
+
+// Classifies a conversion failure, applying the configured null policy (§12.4).
+func (m *Mapper) conversionError(field string, err error) error {
+	if errors.Is(err, errNullValue) {
+		if m.spec.Metric.Mapping.Null == config.NullOmit {
+			return errOmitSample
+		}
+		return m.errorf(field, telemetry.ReasonNullValue, err.Error())
+	}
+	return m.errorf(field, telemetry.ReasonConversion, err.Error())
 }
 
 func (m *Mapper) errorf(field string, reason telemetry.Reason, detail string) error {

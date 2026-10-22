@@ -14,7 +14,6 @@ func TestMapSQLGaugeByStatus(t *testing.T) {
 	m := mapping.Spec{
 		CollectionID: "plan-1",
 		SourceID:     "appdb",
-		Style:        mapping.StyleColumns,
 		Limits:       config.Limits{MaxSeriesPerMetric: 1000, MaxLabelValueBytes: 1024},
 		Metric: config.Metric{
 			Name: "app_jobs_by_status",
