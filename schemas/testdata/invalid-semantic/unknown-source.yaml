@@ -1,0 +1,19 @@
+# Cross-reference between metrics and sources is beyond JSON Schema's reach.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: warehouse
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s

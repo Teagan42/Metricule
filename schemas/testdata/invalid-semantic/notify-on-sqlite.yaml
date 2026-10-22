@@ -1,0 +1,20 @@
+# Adapter capability checks require the registry, not the schema.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  db:
+    type: sqlite
+    path: /data/app.db
+metrics:
+  - name: app_users
+    help: Current user population
+    type: gauge
+    source: db
+    query:
+      sql: SELECT COUNT(*) AS value FROM users
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: users_changed
+      fallback_interval: 60s
