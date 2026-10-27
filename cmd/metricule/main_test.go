@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // Tests run against the built binary rather than the command functions, so exit
@@ -55,6 +57,71 @@ func run(t *testing.T, args ...string) result {
 		code = exitErr.ExitCode()
 	}
 	return result{stdout: out.String(), stderr: errb.String(), code: code}
+}
+
+// runBounded runs a command that may not exit on its own, terminating it after d.
+//
+// serve runs until signalled, so any test that only needs to inspect its output has
+// to bound it rather than wait for an exit that will never come.
+func runBounded(t *testing.T, d time.Duration, args ...string) result {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start %v: %v", args, err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	code := 0
+	select {
+	case err := <-done:
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		}
+	case <-time.After(d):
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			_ = cmd.Process.Kill()
+		}
+	}
+	return result{stdout: out.String(), stderr: errb.String(), code: code}
+}
+
+// combinedOutputBounded runs cmd with a custom environment, terminating it after d.
+//
+// Needed because exec.Cmd.CombinedOutput waits for exit, and serve does not exit.
+func combinedOutputBounded(t *testing.T, cmd *exec.Cmd, d time.Duration) ([]byte, error) {
+	t.Helper()
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start %v: %v", cmd.Args, err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return buf.Bytes(), err
+	case <-time.After(d):
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		select {
+		case err := <-done:
+			return buf.Bytes(), err
+		case <-time.After(10 * time.Second):
+			_ = cmd.Process.Kill()
+			return buf.Bytes(), nil
+		}
+	}
 }
 
 func TestVersionSucceeds(t *testing.T) {
@@ -267,7 +334,9 @@ metrics:
 		{"test", "--config", path, "--metric", "app_sessions"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			got := run(t, args...)
+			// serve does not exit on its own once its sources open, so every
+			// command here is bounded rather than waited on.
+			got := runBounded(t, 2*time.Second, args...)
 			if strings.Contains(got.stdout, secret) {
 				t.Error("secret leaked to stdout")
 			}
@@ -292,7 +361,7 @@ metrics:
 		} {
 			cmd := exec.Command(binary, args...)
 			cmd.Env = append(os.Environ(), "TEST_DSN=postgres://user:"+secret+"@db/app")
-			out, _ := cmd.CombinedOutput()
+			out, _ := combinedOutputBounded(t, cmd, 10*time.Second)
 			if bytes.Contains(out, []byte(secret)) {
 				t.Errorf("%v leaked a resolved DSN password:\n%s", args, out)
 			}
@@ -300,18 +369,21 @@ metrics:
 	})
 }
 
-// M0 has no adapters linked. serve must say so plainly rather than start and
-// expose an empty /metrics, which would look like a working exporter (rule 4).
-func TestServeReportsMissingAdapter(t *testing.T) {
+// serve must refuse to start when a source cannot be opened, rather than binding a
+// listener and exposing an empty /metrics — which would present a broken deployment
+// as a healthy one.
+//
+// validConfig points at a SQLite path that does not exist.
+func TestServeRefusesToStartWhenASourceCannotOpen(t *testing.T) {
 	got := run(t, "serve", "--config", writeConfig(t, validConfig))
 	if got.code == 0 {
-		t.Fatal("serve must exit nonzero when no adapter can satisfy the config")
+		t.Fatal("serve must exit nonzero when a configured source cannot be opened")
 	}
-	if !strings.Contains(got.stderr, "sqlite") {
-		t.Errorf("stderr should name the unsatisfied source type, got: %q", got.stderr)
+	if !strings.Contains(got.stderr, "db") {
+		t.Errorf("stderr should name the source that failed, got: %q", got.stderr)
 	}
-	if !strings.Contains(got.stderr, "not implemented") {
-		t.Errorf("stderr should state the adapter is absent from this build, got: %q", got.stderr)
+	if !strings.Contains(got.stderr, "/data/app.db") {
+		t.Errorf("stderr should name the unusable path, got: %q", got.stderr)
 	}
 }
 

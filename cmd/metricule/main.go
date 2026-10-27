@@ -10,9 +10,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"os/signal"
 	"sort"
-	"strings"
+	"syscall"
 	"time"
 
 	"github.com/teagan42/metricule/internal/config"
@@ -203,15 +205,34 @@ func runServe(stdout, stderr io.Writer, args []string) error {
 		return err
 	}
 
-	// Sources are constructed before the listener binds. Serving a /metrics that
-	// can never produce samples would present a broken deployment as a healthy one.
-	sources, err := runtime.BuildSources(cfg)
+	log := logger(stderr)
+
+	// Compiling before binding a listener keeps a malformed plan from producing a
+	// process that serves an empty /metrics and looks healthy.
+	rt, err := runtime.New(cfg, log)
 	if err != nil {
 		return err
 	}
-	defer closeAll(stderr, sources)
 
-	return errors.New("the collection engine and exporter are not implemented in this build (milestone M1)")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.Info("starting metricule",
+		"version", version.Get().Version,
+		"listen", cfg.Server.Listen,
+		"sources", len(cfg.Sources),
+		"metrics", len(cfg.Metrics))
+
+	if err := rt.Run(ctx); err != nil {
+		return err
+	}
+	log.Info("shutdown complete")
+	return nil
+}
+
+// Logs to stderr so stdout carries only command output.
+func logger(stderr io.Writer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 }
 
 func runTest(stdout, stderr io.Writer, args []string) error {
@@ -233,36 +254,22 @@ func runTest(stdout, stderr io.Writer, args []string) error {
 		return err
 	}
 
-	var selected *config.Metric
-	for i := range cfg.Metrics {
-		if cfg.Metrics[i].Name == *metric {
-			selected = &cfg.Metrics[i]
-			break
-		}
-	}
-	if selected == nil {
-		return fmt.Errorf("unknown metric %q (configured: %s)", *metric, strings.Join(metricNames(cfg), ", "))
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	src, err := runtime.BuildSource(selected.Source, cfg.Sources[selected.Source])
+	report, err := runtime.CollectOnce(ctx, cfg, *metric, logger(stderr))
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := src.Close(); err != nil {
-			fmt.Fprintf(stderr, "warning: close source %q: %v\n", selected.Source, err)
-		}
-	}()
 
-	return errors.New("single-metric collection is not implemented in this build (milestone M1)")
-}
+	// Diagnostics to stderr, exposition to stdout, so the output can be piped into
+	// a parser or diffed against a previous run.
+	fmt.Fprintf(stderr, "metric:   %s\nsource:   %s (%s)\nquery:    %s\nduration: %s\nrows:     %d\nsamples:  %d\n\n",
+		report.Metric, report.Source, report.Target, report.Query,
+		report.Duration.Round(time.Microsecond), report.Rows, report.Samples)
 
-func metricNames(cfg *config.Config) []string {
-	out := make([]string, 0, len(cfg.Metrics))
-	for _, m := range cfg.Metrics {
-		out = append(out, m.Name)
-	}
-	return out
+	_, err = io.WriteString(stdout, report.Exposition)
+	return err
 }
 
 func closeAll(stderr io.Writer, sources map[string]source.Source) {
