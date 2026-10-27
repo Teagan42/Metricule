@@ -1,0 +1,51 @@
+# Sidecar stack: Metricule observes a SQLite database owned by another process.
+#
+# The database is deliberately not created by this stack. Seed it first:
+#
+#   mkdir -p data
+#   sqlite3 data/app.db < seed.sql
+name: metricule-sqlite
+
+services:
+  metricule:
+    image: ghcr.io/teagan42/metricule:${METRICULE_VERSION:-v0.5.0}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    command: ["serve", "--config", "/etc/metricule/metricule.yaml"]
+    volumes:
+      - ./metricule.yaml:/etc/metricule/metricule.yaml:ro
+      # Read-write mount: a live WAL database needs to create -shm beside the file.
+      # The adapter still opens every connection with mode=ro (AD-007).
+      - ./data:/data
+    ports:
+      - "127.0.0.1:9108:9108"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - metricule
+    restart: unless-stopped
+
+volumes:
+  promdata:

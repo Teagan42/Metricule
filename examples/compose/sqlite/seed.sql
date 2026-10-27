@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (id) VALUES (1), (2), (3);

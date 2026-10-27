@@ -173,6 +173,7 @@ M1 is the minimum viable release.
 
 - [Architecture](docs/architecture.md)
 - [Architecture decisions](docs/adr/)
+- [Production Compose examples](examples/compose/postgres/README.md)
 - [Managed triggers](docs/triggers.md)
 - [Performance measurements](docs/performance.md)
 - [Known limitations](docs/limitations.md)

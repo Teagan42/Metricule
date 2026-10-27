@@ -1,0 +1,73 @@
+# Production-shaped stack: PostgreSQL, Metricule with managed triggers, Prometheus.
+#
+# Local credentials are defaults for a self-contained example. Replace every
+# password and use Docker secrets in a real deployment.
+name: metricule-postgres
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: owner
+      POSTGRES_PASSWORD: ${APP_OWNER_PASSWORD:-owner-secret}
+      APP_READER_PASSWORD: ${APP_READER_PASSWORD:-reader-secret}
+    volumes:
+      - ./init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owner -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  metricule:
+    image: ghcr.io/teagan42/metricule:${METRICULE_VERSION:-v0.5.0}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    command: ["serve", "--config", "/etc/metricule/metricule.yaml"]
+    environment:
+      # Collection uses the read-only role. Trigger provisioning uses the owner.
+      APP_READ_DSN: postgres://reader:${APP_READER_PASSWORD:-reader-secret}@postgres:5432/app?sslmode=disable
+      APP_ADMIN_DSN: postgres://owner:${APP_OWNER_PASSWORD:-owner-secret}@postgres:5432/app?sslmode=disable
+    volumes:
+      - ./metricule.yaml:/etc/metricule/metricule.yaml:ro
+    ports:
+      - "127.0.0.1:9108:9108"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - metricule
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  promdata:
