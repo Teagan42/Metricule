@@ -10,33 +10,6 @@ import (
 	"github.com/teagan42/metricule/internal/config"
 )
 
-// A trigger block that provisions nothing must not pass startup silently.
-func TestManagedTriggersWarnThatTheyAreIgnored(t *testing.T) {
-	var buf bytes.Buffer
-	log := slog.New(slog.NewJSONHandler(&buf, nil))
-
-	warnIgnoredTriggerManagement(log, triggerConfig(true))
-
-	out := buf.String()
-	if !strings.Contains(out, "triggers.manage is ignored until M3") {
-		t.Fatalf("no warning logged: %s", out)
-	}
-	if !strings.Contains(out, `"source":"appdb"`) {
-		t.Fatalf("warning does not identify the source: %s", out)
-	}
-}
-
-func TestTriggerWarningIsAbsentWhenManagementIsOff(t *testing.T) {
-	var buf bytes.Buffer
-	log := slog.New(slog.NewJSONHandler(&buf, nil))
-
-	warnIgnoredTriggerManagement(log, triggerConfig(false))
-
-	if out := buf.String(); out != "" {
-		t.Fatalf("unexpected warning: %s", out)
-	}
-}
-
 // An auto plan whose source cannot observe change must say it is polling rather
 // than degrade silently.
 func TestAutoWarnsForASourceWithoutObservation(t *testing.T) {
@@ -129,18 +102,5 @@ func TestNotifyOnANotifyingSourceIsNotDegraded(t *testing.T) {
 	}
 	if out := buf.String(); out != "" {
 		t.Fatalf("unexpected warning: %s", out)
-	}
-}
-
-func triggerConfig(manage bool) *config.Config {
-	return &config.Config{
-		Sources: map[string]config.SourceConfig{
-			"appdb": {
-				Type: config.SourcePostgres,
-				Postgres: &config.PostgresSource{
-					Triggers: &config.Triggers{Manage: manage, Schema: "metricule"},
-				},
-			},
-		},
 	}
 }

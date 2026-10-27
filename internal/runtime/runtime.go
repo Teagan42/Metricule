@@ -17,6 +17,7 @@ import (
 	"github.com/teagan42/metricule/internal/snapshot"
 	"github.com/teagan42/metricule/internal/source"
 	"github.com/teagan42/metricule/internal/telemetry"
+	"github.com/teagan42/metricule/internal/triggers"
 	"github.com/teagan42/metricule/internal/version"
 )
 
@@ -25,14 +26,15 @@ const openTimeout = 30 * time.Second
 
 // Runtime is a configured, unstarted exporter.
 type Runtime struct {
-	cfg     *config.Config
-	log     *slog.Logger
-	sources map[string]source.Source
-	store   *snapshot.MemoryStore
-	sched   *collect.Scheduler
-	server  *exporter.Server
-	metrics *telemetry.Metrics
-	watches []watchGroup
+	cfg            *config.Config
+	log            *slog.Logger
+	sources        map[string]source.Source
+	store          *snapshot.MemoryStore
+	sched          *collect.Scheduler
+	server         *exporter.Server
+	metrics        *telemetry.Metrics
+	watches        []watchGroup
+	triggerTargets []triggers.Target
 }
 
 // New compiles configuration into a runnable exporter.
@@ -43,7 +45,11 @@ func New(cfg *config.Config, log *slog.Logger) (*Runtime, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	warnIgnoredTriggerManagement(log, cfg)
+
+	triggerTargets, err := BuildTriggerTargets(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	registry := prometheus.NewRegistry()
 	metrics := telemetry.New(registry, version.Get())
@@ -97,7 +103,8 @@ func New(cfg *config.Config, log *slog.Logger) (*Runtime, error) {
 	return &Runtime{
 		cfg: cfg, log: log, sources: sources,
 		store: store, sched: sched, server: server, metrics: metrics,
-		watches: buildWatchGroups(plans, sources),
+		watches:        buildWatchGroups(plans, sources),
+		triggerTargets: triggerTargets,
 	}, nil
 }
 
@@ -127,6 +134,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeSources(r.log, r.sources)
+	defer r.cleanupManagedTriggers(context.WithoutCancel(ctx))
+
+	// Triggers are provisioned before collection starts so the first change is
+	// already observable. Failure is non-fatal (§9.5).
+	r.provisionManagedTriggers(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

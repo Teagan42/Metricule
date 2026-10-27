@@ -6,27 +6,11 @@ package runtime
 
 import (
 	"fmt"
-	"log/slog"
 	"sort"
 
 	"github.com/teagan42/metricule/internal/config"
 	"github.com/teagan42/metricule/internal/source"
 )
-
-// Warns when configuration asks for a capability this build does not implement.
-//
-// Accepting the block silently would make an operator believe notification triggers
-// are installed when nothing was provisioned (rule 4).
-func warnIgnoredTriggerManagement(log *slog.Logger, cfg *config.Config) {
-	for _, name := range sortedNames(cfg.Sources) {
-		p := cfg.Sources[name].Postgres
-		if p == nil || p.Triggers == nil || !p.Triggers.Manage {
-			continue
-		}
-		log.Warn("triggers.manage is ignored until M3",
-			"source", name, "schema", p.Triggers.Schema)
-	}
-}
 
 // BuildSources constructs every configured source.
 //
@@ -86,16 +70,6 @@ func translatePostgres(name string, p *config.PostgresSource) (any, error) {
 	if p.TLS != nil {
 		s.TLSMode, s.TLSRootCert = p.TLS.Mode, p.TLS.RootCert
 		s.TLSCert, s.TLSKey = p.TLS.Cert, p.TLS.Key
-	}
-	if t := p.Triggers; t != nil && t.Manage {
-		ts := &source.TriggerSettings{Schema: t.Schema, CleanupOnShutdown: t.CleanupOnShutdown, DSN: dsn}
-		if !t.DSN.IsZero() {
-			// Provisioning normally needs privileges the collection role lacks.
-			if ts.DSN, err = t.DSN.Resolve(); err != nil {
-				return nil, fmt.Errorf("source %q: triggers.dsn: %w", name, err)
-			}
-		}
-		s.Triggers = ts
 	}
 	return s, nil
 }
