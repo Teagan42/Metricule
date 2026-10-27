@@ -59,6 +59,18 @@ test-race: ## Run unit tests under the race detector
 test-integration: ## Run integration tests (requires Docker)
 	go test -tags=integration -timeout 15m ./tests/integration/...
 
+.PHONY: bench
+bench: ## Run unit benchmarks (scrape, store, refresh, coalescing)
+	go test -run '^$$' -bench . -benchmem -benchtime=1s ./internal/exporter ./internal/snapshot ./internal/collect
+
+.PHONY: bench-integration
+bench-integration: ## Run datastore benchmarks (requires Docker)
+	go test -tags=integration -run '^$$' -bench . -benchmem -benchtime=2s ./tests/integration/postgres ./tests/integration/sqlite
+
+.PHONY: bench-idle
+bench-idle: ## Measure idle CPU and RSS for 30 seconds
+	./scripts/bench-idle.sh 30
+
 .PHONY: cover
 cover: ## Write a coverage profile and HTML report
 	go test -coverprofile=coverage.out -covermode=atomic ./...

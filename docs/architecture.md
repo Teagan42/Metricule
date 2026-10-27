@@ -126,13 +126,15 @@ subscription, and is therefore never seen (§9.2).
 | M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
 | M3 | Managed PostgreSQL triggers | Complete |
-| M4 | Failure injection, benchmarks, release hardening | Not started |
+| M4 | Failure injection, benchmarks, release hardening | In progress: benchmarks |
 
 M1 adds the collection engine, mapping, snapshot store, exporter, and runtime wiring.
 M2 adds the watcher supervisor, PostgreSQL `LISTEN/NOTIFY`, SQLite `data_version`
 observation, explicit `auto` resolution, and `require_notifications`. M3 adds opt-in
 managed triggers: a shared `pg_notify` function, statement-level triggers per table
 and channel, ownership markers, and the `metricule triggers` maintenance commands.
+M4 adds the measured benchmark baseline in [`performance.md`](performance.md) and
+continues with failure injection and packaging hardening.
 
 Known limitations, including several deliberate design limits, are recorded in
 [`limitations.md`](limitations.md).
