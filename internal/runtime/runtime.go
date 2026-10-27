@@ -32,6 +32,7 @@ type Runtime struct {
 	sched   *collect.Scheduler
 	server  *exporter.Server
 	metrics *telemetry.Metrics
+	watches []watchGroup
 }
 
 // New compiles configuration into a runnable exporter.
@@ -96,6 +97,7 @@ func New(cfg *config.Config, log *slog.Logger) (*Runtime, error) {
 	return &Runtime{
 		cfg: cfg, log: log, sources: sources,
 		store: store, sched: sched, server: server, metrics: metrics,
+		watches: buildWatchGroups(plans, sources),
 	}, nil
 }
 
@@ -130,7 +132,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	defer cancel()
 
 	var wg sync.WaitGroup
-	errs := make(chan error, 3)
+	errs := make(chan error, 4)
 
 	run := func(name string, fn func(context.Context) error) {
 		wg.Add(1)
@@ -146,6 +148,12 @@ func (r *Runtime) Run(ctx context.Context) error {
 	run("collection", r.sched.Run)
 	run("exporter", r.server.ListenAndServe)
 	run("health", r.healthLoop)
+	if len(r.watches) > 0 {
+		run("watch", func(ctx context.Context) error {
+			watchSupervisor(ctx, r.watches, r.sched.Invalidate, r.log)
+			return nil
+		})
+	}
 
 	wg.Wait()
 	close(errs)
