@@ -42,6 +42,7 @@ func New(cfg *config.Config, log *slog.Logger) (*Runtime, error) {
 	if log == nil {
 		log = slog.Default()
 	}
+	warnIgnoredTriggerManagement(log, cfg)
 
 	registry := prometheus.NewRegistry()
 	metrics := telemetry.New(registry, version.Get())

@@ -7,8 +7,10 @@ package source
 // any adapter is constructed or any connection is opened. They are therefore declared
 // here by Agent 0 rather than by each adapter.
 //
-// An adapter that cannot deliver its declared capability is a defect in the adapter,
-// not a reason to weaken this table (rule 3).
+// An instance reports what this build implements through Capabilities. A type whose
+// implementation is incomplete narrows its instance capabilities rather than
+// weakening this table, so configuration written for a future milestone stays valid
+// while runtime decisions see the truth (rule 3).
 func init() {
 	DeclareCapabilities(TypePostgres, Capabilities{
 		Query:             true,

@@ -6,11 +6,27 @@ package runtime
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/teagan42/metricule/internal/config"
 	"github.com/teagan42/metricule/internal/source"
 )
+
+// Warns when configuration asks for a capability this build does not implement.
+//
+// Accepting the block silently would make an operator believe notification triggers
+// are installed when nothing was provisioned (rule 4).
+func warnIgnoredTriggerManagement(log *slog.Logger, cfg *config.Config) {
+	for _, name := range sortedNames(cfg.Sources) {
+		p := cfg.Sources[name].Postgres
+		if p == nil || p.Triggers == nil || !p.Triggers.Manage {
+			continue
+		}
+		log.Warn("triggers.manage is ignored until M3",
+			"source", name, "schema", p.Triggers.Schema)
+	}
+}
 
 // BuildSources constructs every configured source.
 //
