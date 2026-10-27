@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/Teagan42/Metricule/compare/v0.3.0...v0.4.0) (2026-10-27)
+
+
+### Features
+
+* **runtime:** add the M2 watch supervisor ([#23](https://github.com/Teagan42/Metricule/issues/23)) ([a1c6676](https://github.com/Teagan42/Metricule/commit/a1c66763ae93eec561961a177d873c047816fd5e))
+* **source/postgres:** listen for change notifications ([#26](https://github.com/Teagan42/Metricule/issues/26)) ([a5c7055](https://github.com/Teagan42/Metricule/commit/a5c70550366486e8334dd994baac92488e2e5deb))
+* **source/sqlite:** observe change with PRAGMA data_version ([#25](https://github.com/Teagan42/Metricule/issues/25)) ([a96a9c1](https://github.com/Teagan42/Metricule/commit/a96a9c13738b0d634fd4ce587040de14a134fb52))
+
+
+### Bug Fixes
+
+* **ci:** attach only release artifacts to the release ([#27](https://github.com/Teagan42/Metricule/issues/27)) ([4568e03](https://github.com/Teagan42/Metricule/commit/4568e03ee5dbf06213237eb229607ddf82acbf09))
+* **source:** stop advertising unimplemented change observation ([#20](https://github.com/Teagan42/Metricule/issues/20)) ([6a47c1b](https://github.com/Teagan42/Metricule/commit/6a47c1bb95e742b8861fa20a9a0569cc1228660d))
+
+
+### Documentation
+
+* align status with the M1 release ([#19](https://github.com/Teagan42/Metricule/issues/19)) ([c7154e7](https://github.com/Teagan42/Metricule/commit/c7154e7cbc1acb6d26f73cf110749f2a58595adf))
+
 ## [0.3.0](https://github.com/Teagan42/Metricule/compare/v0.2.0...v0.3.0) (2026-10-27)
 
 
