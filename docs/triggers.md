@@ -98,7 +98,9 @@ function, and leaves the schema and every unrelated object alone.
 
 Apply converges in both directions: a managed trigger that is no longer described by
 the configuration (a removed metric, a changed channel) is dropped. The function is
-shared and stays.
+shared and stays. This includes an empty scope: with `manage: true` and no notify
+metric declaring a table and channel, apply creates the managed schema and function
+and removes leftover managed triggers.
 
 `plan` and `apply` require `triggers.manage: true`. `status` and `remove` work with
 the block present and management off, so disabling provisioning does not strand
