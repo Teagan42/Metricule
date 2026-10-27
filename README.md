@@ -88,7 +88,7 @@ metrics:
       fallback_interval: 60s
 ```
 
-Produces, once the collection engine lands in M1:
+Produces:
 
 ```text
 app_jobs_pending 12
@@ -108,8 +108,8 @@ metricule validate: configuration is invalid (1 error(s)):
 
 [`examples/reference.yaml`](examples/reference.yaml) exercises every supported field
 and is validated in CI. The authoritative field list is
-[`schemas/v1alpha1.schema.json`](schemas/v1alpha1.schema.json); a prose reference at
-`docs/configuration.md` lands with M1.
+[`schemas/v1alpha1.schema.json`](schemas/v1alpha1.schema.json); the prose reference is
+[`docs/configuration.md`](docs/configuration.md).
 
 ### Editor support
 
@@ -162,7 +162,7 @@ Exit codes: `0` success, `1` runtime failure, `2` usage error.
 | Milestone | Scope | Status |
 |---|---|---|
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
-| M1 | Three adapters, gauge mapping, polling, exposition | Not started |
+| M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Not started |
 | M3 | Managed PostgreSQL triggers | Not started |
 | M4 | Failure injection, benchmarks, release hardening | Not started |
