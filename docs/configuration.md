@@ -28,9 +28,8 @@ See [ADR 0007](adr/0007-schema-validation-parity.md).
 
 > **Status.** `metricule validate`, `metricule serve`, `metricule test`,
 > `metricule config schema`, and `metricule version` work today. Polling, mapping,
-> snapshot publication, exposition, PostgreSQL `LISTEN/NOTIFY`, and SQLite
-> `data_version` observation are implemented. Managed triggers validate but
-> provision nothing until M3.
+> snapshot publication, exposition, PostgreSQL `LISTEN/NOTIFY`, SQLite
+> `data_version` observation, and opt-in managed triggers are implemented.
 
 ## Document structure
 
@@ -195,8 +194,9 @@ validation time, before any connection is opened.
 | `triggers.cleanup_on_shutdown` | boolean | no | `false` | Removes the managed objects on exit. Off by default to avoid trigger churn across restarts. |
 | `triggers.dsn` | secret ref | no | falls back to `dsn` | Separate provisioning credentials. Omitting it warns, because the collection role should not hold schema-owner privileges. |
 
-Trigger management is scheduled for M3. Setting `manage: true` validates today but
-provisions nothing; startup logs a warning that the block is ignored.
+`serve` applies managed triggers at startup when `manage: true`; `metricule triggers
+plan|apply|status|remove` provisions, inspects, or removes them explicitly. See
+[`triggers.md`](triggers.md) for ownership markers, privileges, and failure behavior.
 
 ### `type: sqlite`
 
@@ -423,8 +423,6 @@ shape, and source reachability. Those need a live source — use
 
 ## Known limitations
 
-- **Managed triggers provision nothing.** `triggers.manage: true` is accepted and
-  ignored until M3; startup logs a warning.
 - Histograms, summaries, event-derived counters, expression evaluation, non-GET HTTP
   methods, and the `manual` and `cdc` collection modes are out of scope for M2.
 
@@ -436,7 +434,7 @@ Validated in CI by `make validate-examples`, which runs `metricule validate` ove
 | File | Shows |
 |---|---|
 | [`examples/reference.yaml`](../examples/reference.yaml) | The specification's §5.1 contract example |
-| [`examples/postgres/metricule.yaml`](../examples/postgres/metricule.yaml) | Polling, `LISTEN`/`NOTIFY` with watch scope, a ledger-backed counter, TLS |
+| [`examples/postgres/metricule.yaml`](../examples/postgres/metricule.yaml) | Polling, `LISTEN`/`NOTIFY` with watch scope, opt-in managed triggers, a ledger-backed counter, TLS |
 | [`examples/sqlite/metricule.yaml`](../examples/sqlite/metricule.yaml) | Read-only access, `auto` mode change detection, per-metric limits and `drop` policy |
 | [`examples/http/metricule.yaml`](../examples/http/metricule.yaml) | Bearer authentication, a path allow-list, array extraction, unit scaling, `state_set` |
 

@@ -78,7 +78,9 @@ collect   -> config, source, snapshot, telemetry
 mapping   -> config, snapshot, telemetry
 snapshot  -> (nothing internal)
 exporter  -> config, snapshot, telemetry
-runtime   -> config, source, collect, mapping, snapshot, telemetry
+runtime   -> config, source, collect, mapping, snapshot, telemetry, triggers
+triggers  -> (stdlib and pgx only; receives resolved settings)
+cmd       -> config, runtime, source, triggers, version, schemas
 telemetry -> version
 ```
 

@@ -7,9 +7,10 @@ Several entries are deliberate design limits rather than unfinished work; those 
 marked **by design** and will not change. Where a limitation has a planned fix, the
 milestone is named.
 
-> **Status.** Describes the M1 release (v0.3.0) plus M2 change-aware refresh.
-> Collection works end to end, PostgreSQL plans can use `LISTEN/NOTIFY`, and SQLite
-> `auto` plans react to `PRAGMA data_version`.
+> **Status.** Describes the M1 release plus M2 change-aware refresh and M3 managed
+> triggers. Collection works end to end, PostgreSQL plans can use `LISTEN/NOTIFY`
+> (with optional managed triggers), and SQLite `auto` plans react to
+> `PRAGMA data_version`.
 
 ## Observability semantics
 
@@ -137,8 +138,9 @@ work.
 
 ### SQLite: no write access, ever
 
-**By design** (AD-007). Read-only in M1. No triggers are installed, and the journal
-mode is never altered. The file is owned by the monitored application.
+**By design** (AD-007). Read-only in every release. No triggers are installed by the
+SQLite adapter, and the journal mode is never altered. The file is owned by the
+monitored application.
 
 ### PostgreSQL: `pool.max_idle` is a floor, not a ceiling
 
@@ -150,6 +152,14 @@ clears them, typically within a minute.
 The field promises a bound the driver cannot enforce. Documented rather than fixed for
 v0.1; a rename to describe the real semantics is queued for M4. `pool.max_open` is
 faithful.
+
+### PostgreSQL: managed triggers add write-path work
+
+**By design** (§9.4). Opt-in managed triggers are statement-level and call
+`pg_notify` once per matching statement. They never read or aggregate rows. Expect a
+notification even when an `UPDATE` changed no rows, and one per statement in a batch.
+On an extremely write-heavy table, polling may be cheaper than the trigger. See
+[`triggers.md`](triggers.md#overhead).
 
 ### HTTP: GET only, and no streaming
 
