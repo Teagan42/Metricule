@@ -74,7 +74,7 @@ var sharedPostgres = sync.OnceValues(func() (*tcpostgres.PostgresContainer, erro
 
 // Returns a DSN on the shared server tagged with a per-test application_name, so
 // a test recognizes its own backends in pg_stat_activity.
-func sharedDSN(t *testing.T, appName string) string {
+func sharedDSN(t testing.TB, appName string) string {
 	t.Helper()
 	ctr, err := sharedPostgres()
 	if err != nil {
@@ -177,7 +177,7 @@ func openSource(t *testing.T, dsn string, tune func(*source.PostgresSettings)) *
 }
 
 // Runs admin SQL on a direct connection, outside the adapter's read-only pool.
-func adminExec(t *testing.T, dsn string, statements ...string) {
+func adminExec(t testing.TB, dsn string, statements ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
