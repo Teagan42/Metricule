@@ -50,9 +50,14 @@ type WatchableSource interface {
 	Source
 
 	// Watch blocks until ctx is cancelled, sending change events as they are
-	// observed. Implementations must reconnect internally with bounded backoff and
-	// must emit a ChangeEvent of KindReconnect after re-establishing a subscription
-	// so the scheduler can reconcile (§9.2).
+	// observed. Implementations must reconnect internally with bounded backoff.
+	//
+	// Emit KindReconnect after establishing the initial subscription and again
+	// after every re-establishment, before waiting for changes. It means
+	// "subscribed; reconcile now" and closes the window between a baseline read
+	// and the subscription (§9.2). Starting Watch and the scheduler concurrently is
+	// therefore safe: the post-subscribe event forces the reconcile that would
+	// otherwise be missed.
 	//
 	// Implementations must not block indefinitely on a full events channel; drop and
 	// count coalesced events instead of growing an unbounded queue (rule 10).
