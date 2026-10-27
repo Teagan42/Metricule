@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/Teagan42/Metricule/compare/v0.2.0...v0.3.0) (2026-10-27)
+
+
+### Features
+
+* **collect:** attribute retries to the retry trigger ([#17](https://github.com/Teagan42/Metricule/issues/17)) ([b74d271](https://github.com/Teagan42/Metricule/commit/b74d27109fbad5dde4fb501e56c3726dfa353a0a))
+* **runtime:** wire collection to the exporter ([#16](https://github.com/Teagan42/Metricule/issues/16)) ([65ed9bf](https://github.com/Teagan42/Metricule/commit/65ed9bf07def14a68596a2af222a191c7265c464))
+
 ## [0.2.0](https://github.com/Teagan42/Metricule/compare/v0.1.0...v0.2.0) (2026-10-22)
 
 
