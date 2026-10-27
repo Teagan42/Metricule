@@ -39,15 +39,14 @@ that boundary in the other direction.
 | `internal/config` | Parse, default, and validate configuration; reject unknown keys |
 | `internal/secrets` | Resolve env and file credential references; redact everything |
 | `internal/source` | The adapter contract: `Source`, `WatchableSource`, `Capabilities` |
-| `internal/source/postgres` | SQL querying plus a dedicated `LISTEN` connection |
-| `internal/source/sqlite` | Read-only querying plus `PRAGMA data_version` observation |
+| `internal/source/postgres` | SQL querying (M1); `LISTEN`/`NOTIFY` is M2 |
+| `internal/source/sqlite` | Read-only querying (M1); `PRAGMA data_version` observation is M2 |
 | `internal/source/httpjson` | GET requests plus RFC 9535 selector extraction |
 | `internal/selector` | RFC 9535 JSONPath evaluation |
 | `internal/collect` | Scheduling, coalescing, debouncing, retry, reconciliation |
 | `internal/mapping` | Result sets into validated families; cardinality enforcement |
 | `internal/snapshot` | Immutable published state; atomic replacement; staleness |
 | `internal/exporter` | `/metrics`, `/healthz`, `/readyz` |
-| `internal/triggers` | Opt-in managed PostgreSQL notification triggers |
 | `internal/telemetry` | Metricule's own metric families |
 | `internal/runtime` | Compile configuration into runnable objects; resolve secrets |
 
@@ -55,13 +54,13 @@ that boundary in the other direction.
 
 ## Collection modes
 
-| Mode | Refresh trigger | Reconciliation |
-|---|---|---|
-| `poll` | Fixed interval | n/a |
-| `notify` | Source notification | Required (`fallback_interval`) |
-| `auto` | Best mechanism the adapter advertises | Required (`fallback_interval`) |
+| Mode | Refresh trigger | M1 behavior | Reconciliation |
+|---|---|---|---|
+| `poll` | Fixed interval | Implemented | n/a |
+| `notify` | Source notification | Reconcile-only until M2 | Required (`fallback_interval`) |
+| `auto` | Best mechanism the adapter advertises | Polling until M2 | Required (`fallback_interval`) |
 
-`manual` and `cdc` are reserved and rejected in v0.1.
+`manual` and `cdc` are reserved and rejected in M1.
 
 Reconciliation is mandatory for change-driven modes, not optional tuning. A change
 notification is an invalidation hint, not a durable event (AD-005): PostgreSQL drops
@@ -93,12 +92,12 @@ These are deliberate and tested, not gaps:
 
 - One scheduler goroutine per collection plan, bounded by a per-source concurrency
   limit.
-- One long-lived listener goroutine per watched source. Not one per notification:
+- One long-lived listener goroutine per watched source (M2). Not one per notification:
   bursts coalesce into a pending refresh rather than spawning work (rule 10).
 - Publication replaces an immutable snapshot pointer. Readers never block on a
   collection, and a scrape never observes a partially mapped result (§8.2, P8).
-- Notifications arriving during a collection schedule exactly one follow-up refresh,
-  so a write burst cannot queue unbounded work.
+- Notifications arriving during a collection schedule exactly one follow-up refresh
+  (M2), so a write burst cannot queue unbounded work.
 
 ## Failure handling
 
@@ -106,29 +105,28 @@ These are deliberate and tested, not gaps:
 |---|---|
 | Query timeout | Collection fails; staleness policy applies; error counter increments |
 | Source unreachable | `metricule_source_up` drops to 0; `/metrics` stays responsive |
-| Listener disconnect | Reconnect with backoff, re-subscribe, then reconcile |
+| Listener disconnect (M2) | Reconnect with backoff, re-subscribe, then reconcile |
 | Cardinality overflow | Collection fails atomically; rejection counter increments |
 | Mapping error | Collection fails; metric, source, and reason reported without row data |
 | Configuration invalid | Startup refuses, with diagnostics anchored to config paths |
 
-Ordering matters on reconnect: subscribe first, then reconcile. The reverse leaves a
-window where a change lands after the baseline read but before the subscription, and
-is therefore never seen (§9.2).
+Ordering matters on reconnect (M2): subscribe first, then reconcile. The reverse
+leaves a window where a change lands after the baseline read but before the
+subscription, and is therefore never seen (§9.2).
 
 ## Implementation status
 
 | Milestone | Scope | Status |
 |---|---|---|
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
-| M1 | Three adapters, gauge mapping, polling, exposition | Not started |
+| M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Not started |
 | M3 | Managed PostgreSQL triggers | Not started |
 | M4 | Failure injection, benchmarks, release hardening | Not started |
 
-M0 defines contracts and implements configuration, validation, the CLI surface, and
-telemetry families. It contains **no collection engine and no adapters**: `serve` and
-`test` construct their sources and then report that the engine arrives in M1, rather
-than starting and serving an empty `/metrics`.
+M1 adds the collection engine, mapping, snapshot store, exporter, and runtime wiring.
+`serve` and `test` now run against live sources; change-driven refresh remains M2, so
+`notify` and `auto` plans reconcile on their fallback interval until then.
 
 Known limitations, including several deliberate design limits, are recorded in
 [`limitations.md`](limitations.md).

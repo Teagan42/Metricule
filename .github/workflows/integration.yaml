@@ -18,10 +18,10 @@ concurrency:
   group: integration-${{ github.ref }}
   cancel-in-progress: true
 
-# Datastore integration jobs land in M1 alongside the adapters that need them.
-# Agents 4-6 add a job per adapter running `make test-integration` against real
-# PostgreSQL and SQLite instances: §22 rule 9 forbids substituting mocks where
-# actual datastore behavior is under test. There is deliberately no placeholder
+# Each datastore integration job runs `make test-integration` against a real
+# PostgreSQL or SQLite instance: §22 rule 9 forbids substituting mocks where actual
+# datastore behavior is under test. HTTP/JSON is covered end to end through the real
+# binary in cmd/metricule. There is deliberately no placeholder
 # job here, because a green job that runs no tests misreports coverage.
 jobs:
   postgres:

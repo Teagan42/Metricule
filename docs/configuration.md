@@ -26,11 +26,11 @@ deliberately a **subset** of what `metricule validate` enforces: cross-field rul
 as "this metric's `source` must name a declared source" are beyond JSON Schema's reach.
 See [ADR 0007](adr/0007-schema-validation-parity.md).
 
-> **Status.** `metricule validate`, `metricule config schema` and `metricule version`
-> work today. `metricule serve` and `metricule test` load and validate configuration,
-> then exit with an error: the collection engine lands in M1. Every field below is
-> parsed and validated now; fields are marked where runtime behavior is not yet
-> implemented.
+> **Status.** `metricule validate`, `metricule serve`, `metricule test`,
+> `metricule config schema`, and `metricule version` work today. Polling, mapping,
+> snapshot publication, and exposition are implemented. Change-driven refresh
+> (`notify` and `auto`) validates but reconciles on `fallback_interval` until M2;
+> managed triggers validate but provision nothing until M3.
 
 ## Document structure
 
@@ -418,28 +418,15 @@ shape, and source reachability. Those need a live source — use
 
 ## Known limitations
 
-- **`serve` and `test` are not implemented.** They parse, default, validate, and build
-  sources, then exit with an error. The collection engine, mapping engine and exporter
-  land in M1.
-- **An explicit `0` is indistinguishable from an unset field.** Writing
-  `retries: 0`, `pool.max_idle: 0`, `max_series_per_metric: 0`, `interval: 0s` or
-  `max_stale_age: 0s` currently inherits the default instead of taking effect, because
-  defaulting cannot tell "stated zero" from "omitted". Three of those spellings are
-  rejected by the JSON Schema even though `metricule validate` accepts them, so an
-  editor will flag what the CLI allows. Do not state zero; omit the field, or state the
-  value you want. Tracked by `internal/config/gaps_test.go`
-  (`go test -tags configgaps ./internal/config/`).
-- **`sqlite` `readonly: false` is accepted and overridden** to `true` rather than
-  refused, for the same reason. The guarantee holds either way (AD-007), but the
-  document does not say what Metricule does.
-- **Trigger management validates but does nothing.** `triggers.manage: true` is accepted
-  now; provisioning arrives in M3.
-- **Runtime mapping behavior is validated but not yet executed.** `scale`, the null
-  policy, label extraction, selector evaluation against live data, and limit
-  enforcement all belong to the mapping engine and snapshot store, which land in M1.
-  Selector *syntax* is checked today; selector *results* are not.
+- **Change-driven refresh is not implemented.** `mode: notify` and `mode: auto`
+  validate, but until M2 they refresh only on `fallback_interval`. A SQLite `auto`
+  plan therefore polls rather than observing `PRAGMA data_version`; a PostgreSQL
+  `notify` plan reconciles rather than listening. See
+  [`limitations.md`](limitations.md#mode-notify-currently-degrades-to-reconcile-only).
+- **Trigger management validates but does nothing.** `triggers.manage: true` is
+  accepted and ignored until M3.
 - Histograms, summaries, event-derived counters, expression evaluation, non-GET HTTP
-  methods, and the `manual` and `cdc` collection modes are out of scope for v0.1.
+  methods, and the `manual` and `cdc` collection modes are out of scope for M1.
 
 ## Examples
 

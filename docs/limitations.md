@@ -7,10 +7,9 @@ Several entries are deliberate design limits rather than unfinished work; those 
 marked **by design** and will not change. Where a limitation has a planned fix, the
 milestone is named.
 
-> **Status.** Describes v0.1 as designed, covering the full adapter set. Collection
-> works end to end as of the runtime wiring; change-driven refresh (`mode: notify`
-> and SQLite change tokens) is still M2, so the entries marked **M1 limitation**
-> remain current.
+> **Status.** Describes the M1 release (v0.3.0), covering the full adapter set.
+> Collection works end to end; change-driven refresh (`mode: notify` and SQLite
+> change tokens) is still M2, so the entry marked **M2 limitation** remains current.
 
 ## Observability semantics
 
@@ -46,7 +45,7 @@ A `COUNT(*)` of current rows is a gauge, even when the metric name ends in `_tot
 
 ### Histograms and summaries are not supported
 
-**By design for v0.1** (§8.5). Bucket construction from persisted aggregate data is
+**By design for M1** (§8.5). Bucket construction from persisted aggregate data is
 deferred to M5 and only if the semantics can be verified.
 
 ### Metricule exposes current state, not history
@@ -87,7 +86,7 @@ metrics from different sources were read at the same instant.
 
 ### `mode: notify` currently degrades to reconcile-only
 
-**M1 limitation.** `LISTEN/NOTIFY` arrives in M2. Until then a notify plan validates
+**M2 limitation.** `LISTEN/NOTIFY` arrives in M2. Until then a notify plan validates
 (the capability table correctly records that PostgreSQL supports notifications) but
 refreshes only on its `fallback_interval`.
 
@@ -138,7 +137,7 @@ work.
 
 ### SQLite: no write access, ever
 
-**By design** (AD-007). Read-only in v0.1. No triggers are installed, and the journal
+**By design** (AD-007). Read-only in M1. No triggers are installed, and the journal
 mode is never altered. The file is owned by the monitored application.
 
 ### PostgreSQL: `pool.max_idle` is a floor, not a ceiling
@@ -154,7 +153,7 @@ faithful.
 
 ### HTTP: GET only, and no streaming
 
-**By design for v0.1** (§11.4). No SSE, WebSockets, webhook ingestion, GraphQL, OAuth2
+**By design for M1** (§11.4). No SSE, WebSockets, webhook ingestion, GraphQL, OAuth2
 token refresh, or XML. Cross-origin redirects are always refused, regardless of
 `max_redirects`.
 
@@ -173,7 +172,7 @@ means `validate` passing is not proof that `serve` will start. Use
 ### Secrets are resolved once, at startup
 
 A rotated credential is not picked up until the process restarts. There is no hot
-reload of configuration or secrets in v0.1.
+reload of configuration or secrets in M1.
 
 ### Cardinality limits are enforced at different layers
 
