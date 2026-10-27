@@ -127,11 +127,6 @@ func (r *Runtime) provisionManagedTriggers(ctx context.Context) {
 		if !target.Manage {
 			continue
 		}
-		if len(target.Subscriptions) == 0 {
-			r.log.Info("triggers.manage is true but no notify metric declares watch tables; nothing to provision",
-				"source", target.SourceID, "schema", target.Schema)
-			continue
-		}
 
 		opCtx, cancel := context.WithTimeout(ctx, triggerOperationTimeout)
 		err := withTriggerManager(opCtx, target, func(m *triggers.Manager) error {
