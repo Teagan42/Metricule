@@ -164,7 +164,7 @@ Exit codes: `0` success, `1` runtime failure, `2` usage error.
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
 | M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
-| M3 | Managed PostgreSQL triggers | Not started |
+| M3 | Managed PostgreSQL triggers | Complete |
 | M4 | Failure injection, benchmarks, release hardening | Not started |
 
 M1 is the minimum viable release.
@@ -173,6 +173,7 @@ M1 is the minimum viable release.
 
 - [Architecture](docs/architecture.md)
 - [Architecture decisions](docs/adr/)
+- [Managed triggers](docs/triggers.md)
 - [Known limitations](docs/limitations.md)
 - [Implementation specification](docs/HANDOFF.md)
 - [Branching and releases](docs/releasing.md)

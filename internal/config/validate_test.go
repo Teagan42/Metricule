@@ -894,6 +894,65 @@ metrics:
 			want: "channel applies only to notify mode",
 		},
 		{
+			name: "cleanup_without_manage",
+			rule: "incorrect PostgreSQL configuration",
+			doc: `apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  pg:
+    type: postgres
+    dsn:
+      value: postgres://u:p@db.invalid/app
+    triggers:
+      manage: false
+      cleanup_on_shutdown: true
+metrics: []
+`,
+			path: "sources.pg.triggers.cleanup_on_shutdown",
+			want: "requires triggers.manage: true",
+		},
+		{
+			name: "notify_with_unqualified_watch_table",
+			rule: "incorrect collection configuration",
+			doc: postgresDoc("", `  - name: app_thing
+    help: A thing
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: app_changed
+      fallback_interval: 30s
+      watch:
+        tables:
+          - jobs
+`),
+			path: "metrics[0].collect.watch.tables[0]",
+			want: "must be schema-qualified",
+		},
+		{
+			name: "notify_with_an_overlong_channel",
+			rule: "incorrect collection configuration",
+			doc: postgresDoc("", `  - name: app_thing
+    help: A thing
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: this_channel_name_is_far_too_long_for_a_postgresql_notification_identifier
+      fallback_interval: 30s
+`),
+			path: "metrics[0].collect.channel",
+			want: "63-byte identifier limit",
+		},
+		{
 			name: "require_notifications_in_poll_mode",
 			rule: "incorrect collection configuration",
 			doc: postgresDoc("", `  - name: app_thing

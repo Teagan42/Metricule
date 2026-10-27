@@ -171,6 +171,9 @@ func validatePostgres(v *collector, path string, p *PostgresSource) {
 			v.errorf(path+".tls.mode", "unsupported sslmode %q", p.TLS.Mode)
 		}
 	}
+	if p.Triggers != nil && p.Triggers.CleanupOnShutdown && !p.Triggers.Manage {
+		v.errorf(path+".triggers.cleanup_on_shutdown", "requires triggers.manage: true; nothing is provisioned to clean up")
+	}
 	if p.Triggers != nil && p.Triggers.Manage {
 		if p.Triggers.Schema == "" {
 			v.errorf(path+".triggers.schema", "required when triggers.manage is true")
@@ -382,6 +385,7 @@ func validateModeAgainstCapabilities(v *collector, path string, m *Metric, st So
 			}
 			v.errorf(path+".collect.mode", "source type %q does not support notifications%s", st, hint)
 		}
+		validateNotificationScope(v, path, m, st)
 	case ModeAuto:
 		if !c.Notifications && !c.ChangeTokens && !c.Poll {
 			v.errorf(path+".collect.mode", "source type %q advertises no collection mechanism", st)
@@ -391,6 +395,33 @@ func validateModeAgainstCapabilities(v *collector, path string, m *Metric, st So
 			v.errorf(path+".collect.channel", "auto mode on source type %q resolves to notifications and requires a channel", st)
 		case !c.Notifications && m.Collect.Channel != "":
 			v.errorf(path+".collect.channel", "source type %q does not support notification channels", st)
+		}
+		if c.Notifications {
+			validateNotificationScope(v, path, m, st)
+		}
+	}
+}
+
+// Checks the scope a PostgreSQL notification plan depends on.
+//
+// The adapter derives notification scope from a schema-qualified table name, and
+// managed triggers address identifiers directly. An unqualified or quoted name
+// would need a silent guess, so it is rejected at validation time.
+func validateNotificationScope(v *collector, path string, m *Metric, st SourceType) {
+	if st != SourcePostgres {
+		return
+	}
+	if channel := m.Collect.Channel; channel != "" && len([]byte(channel)) > 63 {
+		v.errorf(path+".collect.channel", "channel %q exceeds PostgreSQL's 63-byte identifier limit", channel)
+	}
+	if m.Collect.Watch == nil {
+		return
+	}
+	for i, table := range m.Collect.Watch.Tables {
+		parts := strings.Split(table, ".")
+		if len(parts) != 2 || !labelNameRe.MatchString(parts[0]) || !labelNameRe.MatchString(parts[1]) {
+			v.errorf(fmt.Sprintf("%s.collect.watch.tables[%d]", path, i),
+				"table %q must be schema-qualified with plain identifiers, such as public.jobs", table)
 		}
 	}
 }

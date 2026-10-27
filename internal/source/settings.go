@@ -21,17 +21,6 @@ type PostgresSettings struct {
 	TLSRootCert string
 	TLSCert     string
 	TLSKey      string
-
-	// Triggers is nil unless trigger management is explicitly enabled (AD-006).
-	Triggers *TriggerSettings
-}
-
-// TriggerSettings configures managed notification triggers.
-type TriggerSettings struct {
-	Schema            string
-	CleanupOnShutdown bool
-	// DSN holds separate provisioning credentials, falling back to the query DSN.
-	DSN string
 }
 
 // SQLiteSettings configures the SQLite adapter (§10). Read-only in v0.1 (AD-007).

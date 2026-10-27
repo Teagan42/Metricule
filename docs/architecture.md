@@ -47,6 +47,7 @@ that boundary in the other direction.
 | `internal/mapping` | Result sets into validated families; cardinality enforcement |
 | `internal/snapshot` | Immutable published state; atomic replacement; staleness |
 | `internal/exporter` | `/metrics`, `/healthz`, `/readyz` |
+| `internal/triggers` | Opt-in managed PostgreSQL notification triggers |
 | `internal/telemetry` | Metricule's own metric families |
 | `internal/runtime` | Compile configuration into runnable objects; resolve secrets |
 
@@ -111,6 +112,7 @@ These are deliberate and tested, not gaps:
 | Cardinality overflow | Collection fails atomically; rejection counter increments |
 | Mapping error | Collection fails; metric, source, and reason reported without row data |
 | Configuration invalid | Startup refuses, with diagnostics anchored to config paths |
+| Managed trigger apply fails | Logged; collection continues and reconciliation covers the gap (§9.5) |
 
 Ordering matters on reconnect: subscribe first, then reconcile. The reverse
 leaves a window where a change lands after the baseline read but before the
@@ -123,12 +125,14 @@ subscription, and is therefore never seen (§9.2).
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
 | M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
-| M3 | Managed PostgreSQL triggers | Not started |
+| M3 | Managed PostgreSQL triggers | Complete |
 | M4 | Failure injection, benchmarks, release hardening | Not started |
 
 M1 adds the collection engine, mapping, snapshot store, exporter, and runtime wiring.
 M2 adds the watcher supervisor, PostgreSQL `LISTEN/NOTIFY`, SQLite `data_version`
-observation, explicit `auto` resolution, and `require_notifications`.
+observation, explicit `auto` resolution, and `require_notifications`. M3 adds opt-in
+managed triggers: a shared `pg_notify` function, statement-level triggers per table
+and channel, ownership markers, and the `metricule triggers` maintenance commands.
 
 Known limitations, including several deliberate design limits, are recorded in
 [`limitations.md`](limitations.md).

@@ -46,6 +46,7 @@ func commands() []command {
 		{"serve", "Run the exporter", runServe},
 		{"validate", "Validate a configuration file", runValidate},
 		{"test", "Execute one metric's collection and print the result", runTest},
+		{"triggers", "Manage PostgreSQL notification triggers", runTriggers},
 		{"config", "Print the configuration JSON Schema", runConfig},
 		{"version", "Print build information", runVersion},
 	}

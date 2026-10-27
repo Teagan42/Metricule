@@ -47,7 +47,7 @@ metrics:
       debounce: 250ms
       watch:
         tables:
-          - invoices
+          - public.invoices
         events:
           - insert
           - update

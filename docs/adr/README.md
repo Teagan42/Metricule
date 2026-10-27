@@ -17,6 +17,7 @@ new record here.
 | [0007](0007-schema-validation-parity.md) | JSON Schema is a subset of Go validation | Accepted |
 | [0008](0008-document-adapters-resolve-selectors.md) | Document adapters resolve selectors, not the mapping engine | Accepted |
 | [0009](0009-adapter-error-and-diagnostic-contracts.md) | Adapter error classification and source diagnostics | Accepted |
+| [0010](0010-managed-trigger-ownership.md) | Managed trigger ownership and shape | Accepted |
 
 ## Format
 

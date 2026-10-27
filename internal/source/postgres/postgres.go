@@ -18,9 +18,9 @@
 //
 // # Known limitations
 //
-// Querying and LISTEN/NOTIFY (§9.2) are implemented. Trigger management (§9.3) is
-// M3, so Capabilities does not report it. pool.max_idle becomes a steady-state
-// ceiling rather than a hard one, because pgx bounds idle connections from below.
+// Querying, LISTEN/NOTIFY (§9.2), and opt-in trigger management (§9.3) are
+// implemented. pool.max_idle becomes a steady-state ceiling rather than a hard one,
+// because pgx bounds idle connections from below.
 package postgres
 
 import (
@@ -40,10 +40,11 @@ var ErrNotOpen = errors.New("postgres: source is not open")
 
 // Capabilities this build delivers.
 //
-// Narrower than the declared table in internal/source/capabilities.go, which also
-// claims TriggerManagement. That is M3 work; reporting it before provisioning
-// exists would claim a capability this adapter cannot serve (rule 4).
-var implemented = source.Capabilities{Query: true, Poll: true, Notifications: true}
+// Matches the declared table: trigger management is available but opt-in, so
+// configuration still decides whether anything is provisioned (AD-006).
+var implemented = source.Capabilities{
+	Query: true, Poll: true, Notifications: true, TriggerManagement: true,
+}
 
 // Register the factory. Capabilities are declared by internal/source (ADR 0005).
 func init() { source.Register(source.TypePostgres, New) }
