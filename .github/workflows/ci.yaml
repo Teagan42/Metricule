@@ -125,6 +125,9 @@ jobs:
       - name: Validate examples
         run: make validate-examples
 
+      - name: Validate Compose examples
+        run: make validate-compose
+
   security:
     name: Vulnerability scan
     runs-on: ubuntu-latest

@@ -91,6 +91,13 @@ validate-examples: build ## Validate every example configuration
 		./bin/$(BINARY) validate --config "$$f" || exit 1; \
 	done
 
+.PHONY: validate-compose
+validate-compose: ## Validate every Compose example
+	@for f in examples/compose/*/compose.yaml; do \
+		echo "validating $$f"; \
+		docker compose -f "$$f" config -q || exit 1; \
+	done
+
 .PHONY: docker
 docker: ## Build the container image for the host platform
 	docker build \

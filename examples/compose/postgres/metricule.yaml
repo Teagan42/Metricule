@@ -1,0 +1,57 @@
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+server:
+  listen: 0.0.0.0:9108
+
+sources:
+  appdb:
+    type: postgres
+    dsn:
+      env: APP_READ_DSN
+    pool:
+      max_open: 4
+      max_idle: 2
+    query_timeout: 5s
+    triggers:
+      manage: true
+      schema: metricule
+      cleanup_on_shutdown: false
+      dsn:
+        env: APP_ADMIN_DSN
+
+metrics:
+  - name: app_jobs_pending
+    help: Jobs accepted but not yet running
+    type: gauge
+    source: appdb
+    query:
+      sql: SELECT COUNT(*) AS value FROM public.jobs WHERE state = 'queued'
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 15s
+
+  - name: app_jobs_by_state
+    help: Jobs by pipeline state
+    type: gauge
+    source: appdb
+    query:
+      sql: SELECT state, COUNT(*) AS value FROM public.jobs GROUP BY state
+    mapping:
+      value: value
+      labels:
+        state: state
+    collect:
+      mode: notify
+      channel: metricule_jobs_changed
+      fallback_interval: 60s
+      debounce: 250ms
+      watch:
+        tables:
+          - public.jobs
+        events:
+          - insert
+          - update
+          - delete
