@@ -13,7 +13,7 @@ sources:
     path: /data/app.db
     readonly: true              # must be true in v0.1 (AD-007)
     busy_timeout: 3s            # lock wait before a collection fails
-    change_check_interval: 2s   # reserved for M2 change observation
+    change_check_interval: 2s   # how often Watch reads PRAGMA data_version
 ```
 
 `path` accepts a relative path, resolved against the process working directory
@@ -71,12 +71,12 @@ being reported as zero (P3, AD-010).
 
 ## Known limitations
 
-- Change observation is not implemented in M1. `Capabilities` reports
-  `ChangeTokens` because the capability table is part of the configuration
-  contract, but the adapter does not yet implement `source.WatchableSource`.
-  `PRAGMA data_version` observation is M2 (§10.2); use `poll` collection until
-  then.
+- Change observation compares `PRAGMA data_version` on a dedicated read-only
+  connection. It reports that the database changed, never which table (§10.2), so
+  every `auto` plan on the source refreshes.
+- A file replacement is detected by inode identity and re-establishes the observer.
+  The replacement is announced as a reconnect so the scheduler reconciles.
 - `SQLiteSettings` carries no query timeout. A collection context deadline is
   honored exactly; with no deadline, a 30s backstop bounds the statement.
-- Change tokens report that the database changed, never which rows (§10.2).
-- One connection pool per source, capped at four connections. Not configurable.
+- One connection pool per source, capped at four connections, plus one pinned
+  observer connection. Not configurable.

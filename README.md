@@ -163,7 +163,7 @@ Exit codes: `0` success, `1` runtime failure, `2` usage error.
 |---|---|---|
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
 | M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
-| M2 | Notifications, change tokens, debouncing, reconciliation | Not started |
+| M2 | Notifications, change tokens, debouncing, reconciliation | In progress (SQLite change tokens) |
 | M3 | Managed PostgreSQL triggers | Not started |
 | M4 | Failure injection, benchmarks, release hardening | Not started |
 

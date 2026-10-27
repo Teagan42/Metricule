@@ -34,13 +34,13 @@ func TestRegisteredWithTheSharedRegistry(t *testing.T) {
 	}
 }
 
-// M1 implements querying only; change tokens arrive in M2 (§10.2).
+// M2 implements change tokens through Watch (§10.2).
 func TestCapabilitiesReportOnlyImplementedSupport(t *testing.T) {
 	s, err := New(testSettings("/tmp/absent.db"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	want := source.Capabilities{Query: true, Poll: true}
+	want := source.Capabilities{Query: true, Poll: true, ChangeTokens: true}
 	if got := s.Capabilities(); got != want {
 		t.Errorf("capabilities = %+v, want %+v", got, want)
 	}
