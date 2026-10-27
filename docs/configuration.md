@@ -28,9 +28,10 @@ See [ADR 0007](adr/0007-schema-validation-parity.md).
 
 > **Status.** `metricule validate`, `metricule serve`, `metricule test`,
 > `metricule config schema`, and `metricule version` work today. Polling, mapping,
-> snapshot publication, and exposition are implemented. Change-driven refresh
-> (`notify` and `auto`) validates but reconciles on `fallback_interval` until M2;
-> managed triggers validate but provision nothing until M3.
+> snapshot publication, and exposition are implemented, and SQLite `auto` plans
+> observe `PRAGMA data_version`. PostgreSQL `notify` plans reconcile on
+> `fallback_interval` until `LISTEN` lands; managed triggers validate but provision
+> nothing until M3.
 
 ## Document structure
 
@@ -418,10 +419,9 @@ shape, and source reachability. Those need a live source — use
 
 ## Known limitations
 
-- **Change-driven refresh is not implemented.** `mode: notify` and `mode: auto`
-  validate, but until M2 they refresh only on `fallback_interval`. A SQLite `auto`
-  plan therefore polls rather than observing `PRAGMA data_version`; a PostgreSQL
-  `notify` plan reconciles rather than listening. See
+- **Change-driven refresh is partially implemented.** SQLite `auto` plans observe
+  `PRAGMA data_version`. PostgreSQL `notify` and `auto` plans still refresh only on
+  `fallback_interval` until `LISTEN` lands. See
   [`limitations.md`](limitations.md#mode-notify-currently-degrades-to-reconcile-only).
 - **Trigger management validates but does nothing.** `triggers.manage: true` is
   accepted and ignored until M3; startup logs a warning.

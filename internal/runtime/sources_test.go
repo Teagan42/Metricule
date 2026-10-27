@@ -37,9 +37,29 @@ func TestTriggerWarningIsAbsentWhenManagementIsOff(t *testing.T) {
 	}
 }
 
-// SQLite advertises change tokens at the type level, but this build cannot observe
-// them. An auto plan must say it is polling rather than degrade silently.
-func TestSQLiteAutoWarnsThatItPolls(t *testing.T) {
+// An auto plan whose source cannot observe change must say it is polling rather
+// than degrade silently.
+func TestAutoWarnsForASourceWithoutObservation(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	m := &config.Metric{
+		Name:   "app_users",
+		Source: "plain",
+		Collect: config.Collect{
+			Mode:             config.ModeAuto,
+			FallbackInterval: config.Duration(time.Minute),
+		},
+	}
+	warnDegradedMode(log, m, &fakeSource{id: "plain"})
+
+	out := buf.String()
+	if !strings.Contains(out, "collection mode resolved to polling") {
+		t.Fatalf("no degraded-mode warning logged: %s", out)
+	}
+}
+
+// SQLite observes change tokens, so auto must not claim it is polling.
+func TestSQLiteAutoIsNotReportedAsPolling(t *testing.T) {
 	src, err := BuildSource("app", config.SourceConfig{
 		Type:   config.SourceSQLite,
 		SQLite: &config.SQLiteSource{Path: "/tmp/absent.db", BusyTimeout: config.Duration(3 * time.Second)},
@@ -60,9 +80,8 @@ func TestSQLiteAutoWarnsThatItPolls(t *testing.T) {
 	}
 	warnDegradedMode(log, m, src)
 
-	out := buf.String()
-	if !strings.Contains(out, "collection mode resolved to polling") {
-		t.Fatalf("no degraded-mode warning logged: %s", out)
+	if out := buf.String(); out != "" {
+		t.Fatalf("unexpected degraded-mode message: %s", out)
 	}
 }
 

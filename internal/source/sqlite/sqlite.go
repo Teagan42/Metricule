@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,8 +32,8 @@ const (
 	maxOpenConns = 4
 	maxIdleConns = 2
 
-	// Reaps idle connections so none pins a replaced inode. Not a lifetime cap:
-	// §10.2 needs one long-lived observer connection in M2.
+	// Reaps idle query connections so none pins a replaced inode. The change
+	// observer uses its own pool, so this does not disturb it.
 	idleTimeout = time.Minute
 
 	// Backstop for a caller that supplies no deadline. SQLiteSettings carries no
@@ -58,6 +59,10 @@ type Source struct {
 	id   string
 	path string
 	dsn  string
+
+	// Paces PRAGMA data_version comparison in Watch (§10.2).
+	changeInterval time.Duration
+	log            *slog.Logger
 
 	// Queries run outside this lock. database/sql is concurrency safe, and a
 	// racing reopen closes connections only once they are returned.
@@ -85,9 +90,15 @@ func New(settings source.Settings) (source.Source, error) {
 	if err != nil {
 		return nil, fmt.Errorf("source %q: resolve path %q: %w", settings.ID, cfg.Path, err)
 	}
-	// ChangeCheckInterval is deliberately unread: the observer that consumes it
-	// is M2 (§10.2). M1 collects by polling only.
-	return &Source{id: settings.ID, path: abs, dsn: dsn}, nil
+	// ChangeCheckInterval paces the observer that Watch runs. Kept here so Watch
+	// can compare data_version without re-reading configuration.
+	return &Source{
+		id:             settings.ID,
+		path:           abs,
+		dsn:            dsn,
+		changeInterval: cfg.ChangeCheckInterval,
+		log:            slog.With("source", settings.ID, "type", source.TypeSQLite),
+	}, nil
 }
 
 // ID returns the configured source name.
@@ -98,12 +109,10 @@ func (s *Source) Type() string { return source.TypeSQLite }
 
 // Capabilities reports what this build implements.
 //
-// The declared table records what the source type can support, including change
-// tokens. This instance does not implement Watch yet, so reporting ChangeTokens
-// would make an auto plan silently poll instead of observing data_version. Widen
-// this when the M2 observer lands (rule 3).
+// The declared table also records change tokens, and Watch observes them, so an
+// auto plan uses data_version instead of polling.
 func (s *Source) Capabilities() source.Capabilities {
-	return source.Capabilities{Query: true, Poll: true}
+	return source.Capabilities{Query: true, Poll: true, ChangeTokens: true}
 }
 
 // Open connects and verifies that the connection is read-only and reachable.

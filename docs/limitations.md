@@ -7,9 +7,11 @@ Several entries are deliberate design limits rather than unfinished work; those 
 marked **by design** and will not change. Where a limitation has a planned fix, the
 milestone is named.
 
-> **Status.** Describes the M1 release (v0.3.0), covering the full adapter set.
-> Collection works end to end; change-driven refresh (`mode: notify` and SQLite
-> change tokens) is still M2, so the entry marked **M2 limitation** remains current.
+> **Status.** Describes the M1 release (v0.3.0) plus the SQLite change observer.
+> Collection works end to end and SQLite `auto` plans react to `PRAGMA
+> data_version`. PostgreSQL `notify` plans still reconcile on their fallback
+> interval until `LISTEN` lands, so the entry marked **M2 limitation** remains
+> current for PostgreSQL.
 
 ## Observability semantics
 
@@ -86,9 +88,12 @@ metrics from different sources were read at the same instant.
 
 ### `mode: notify` currently degrades to reconcile-only
 
-**M2 limitation.** `LISTEN/NOTIFY` arrives in M2. Until then a notify plan validates
-(the capability table correctly records that PostgreSQL supports notifications) but
-refreshes only on its `fallback_interval`.
+**M2 limitation.** PostgreSQL `LISTEN/NOTIFY` is not implemented yet. Until then a
+notify plan validates (the capability table correctly records that PostgreSQL supports
+notifications) but refreshes only on its `fallback_interval`.
+
+SQLite change observation is implemented: `auto` plans compare `PRAGMA data_version`
+on a pinned connection and refresh when it advances.
 
 This is sanctioned degraded operation under §9.5, not a defect, but it means refresh
 latency is the fallback interval rather than near-immediate. Startup logs the
