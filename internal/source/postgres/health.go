@@ -12,6 +12,10 @@ import (
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
+// A drift here silently disabled reconnect telemetry once, so assert the
+// shared contract at compile time.
+var _ source.Diagnosable = (*Source)(nil)
+
 // Backoff bounds for reconnect attempts. A down datastore must not be probed as
 // fast as the scheduler asks, and recovery must not be delayed beyond the cap.
 const (
