@@ -165,7 +165,7 @@ Exit codes: `0` success, `1` runtime failure, `2` usage error.
 | M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
 | M3 | Managed PostgreSQL triggers | Complete |
-| M4 | Failure injection, benchmarks, release hardening | In progress: benchmarks |
+| M4 | Failure injection, benchmarks, release hardening | Complete |
 
 M1 is the minimum viable release.
 
@@ -176,6 +176,7 @@ M1 is the minimum viable release.
 - [Production Compose examples](examples/compose/postgres/README.md)
 - [Managed triggers](docs/triggers.md)
 - [Performance measurements](docs/performance.md)
+- [Release readiness](docs/release-readiness.md)
 - [Known limitations](docs/limitations.md)
 - [Implementation specification](docs/HANDOFF.md)
 - [Branching and releases](docs/releasing.md)
