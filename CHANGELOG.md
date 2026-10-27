@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Teagan42/Metricule/compare/v0.4.0...v0.5.0) (2026-10-27)
+
+
+### Features
+
+* **triggers:** implement managed PostgreSQL notification triggers ([#29](https://github.com/Teagan42/Metricule/issues/29)) ([c8f0fc2](https://github.com/Teagan42/Metricule/commit/c8f0fc290aad9afed62994248adfb84c1319388e))
+
 ## [0.4.0](https://github.com/Teagan42/Metricule/compare/v0.3.0...v0.4.0) (2026-10-27)
 
 
