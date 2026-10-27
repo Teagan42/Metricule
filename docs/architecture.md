@@ -39,7 +39,7 @@ that boundary in the other direction.
 | `internal/config` | Parse, default, and validate configuration; reject unknown keys |
 | `internal/secrets` | Resolve env and file credential references; redact everything |
 | `internal/source` | The adapter contract: `Source`, `WatchableSource`, `Capabilities` |
-| `internal/source/postgres` | SQL querying (M1); `LISTEN`/`NOTIFY` is M2 |
+| `internal/source/postgres` | SQL querying plus a dedicated `LISTEN` connection |
 | `internal/source/sqlite` | Read-only querying plus `PRAGMA data_version` observation |
 | `internal/source/httpjson` | GET requests plus RFC 9535 selector extraction |
 | `internal/selector` | RFC 9535 JSONPath evaluation |
@@ -57,8 +57,8 @@ that boundary in the other direction.
 | Mode | Refresh trigger | M1 behavior | Reconciliation |
 |---|---|---|---|
 | `poll` | Fixed interval | Implemented | n/a |
-| `notify` | Source notification | Reconcile-only on PostgreSQL until `LISTEN` lands | Required (`fallback_interval`) |
-| `auto` | Best mechanism the adapter advertises | `data_version` on SQLite; polling on PostgreSQL | Required (`fallback_interval`) |
+| `notify` | Source notification | Implemented for PostgreSQL | Required (`fallback_interval`) |
+| `auto` | Best mechanism the adapter advertises | `LISTEN` on PostgreSQL; `data_version` on SQLite | Required (`fallback_interval`) |
 
 `manual` and `cdc` are reserved and rejected in M1.
 
@@ -94,7 +94,8 @@ These are deliberate and tested, not gaps:
   limit.
 - One long-lived listener goroutine per watched source and channel. Not one per
   notification: bursts coalesce into a pending refresh rather than spawning work
-  (rule 10). SQLite uses it now; PostgreSQL will share the supervisor.
+  (rule 10). PostgreSQL listens on its own connection; SQLite compares a pinned
+  connection's `data_version`.
 - Publication replaces an immutable snapshot pointer. Readers never block on a
   collection, and a scrape never observes a partially mapped result (§8.2, P8).
 - Notifications arriving during a collection schedule exactly one follow-up refresh,
@@ -121,13 +122,13 @@ subscription, and is therefore never seen (§9.2).
 |---|---|---|
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
 | M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
-| M2 | Notifications, change tokens, debouncing, reconciliation | In progress: SQLite change tokens done |
+| M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
 | M3 | Managed PostgreSQL triggers | Not started |
 | M4 | Failure injection, benchmarks, release hardening | Not started |
 
 M1 adds the collection engine, mapping, snapshot store, exporter, and runtime wiring.
-`serve` and `test` run against live sources. M2 adds the watcher supervisor and the
-SQLite `data_version` observer; PostgreSQL `LISTEN` still follows.
+M2 adds the watcher supervisor, PostgreSQL `LISTEN/NOTIFY`, SQLite `data_version`
+observation, explicit `auto` resolution, and `require_notifications`.
 
 Known limitations, including several deliberate design limits, are recorded in
 [`limitations.md`](limitations.md).

@@ -894,6 +894,62 @@ metrics:
 			want: "channel applies only to notify mode",
 		},
 		{
+			name: "require_notifications_in_poll_mode",
+			rule: "incorrect collection configuration",
+			doc: postgresDoc("", `  - name: app_thing
+    help: A thing
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
+      require_notifications: true
+`),
+			path: "metrics[0].collect.require_notifications",
+			want: "require_notifications applies only to notify and auto modes",
+		},
+		{
+			name: "auto_without_channel_on_notifying_source",
+			rule: "incorrect collection configuration",
+			doc: postgresDoc("", `  - name: app_thing
+    help: A thing
+    type: gauge
+    source: pg
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: auto
+      fallback_interval: 30s
+`),
+			path: "metrics[0].collect.channel",
+			want: "auto mode on source type \"postgres\" resolves to notifications and requires a channel",
+		},
+		{
+			name: "channel_on_a_source_without_notifications",
+			rule: "incorrect collection configuration",
+			doc: sqliteDoc(`  - name: app_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: auto
+      channel: app_changed
+      fallback_interval: 30s
+`),
+			path: "metrics[0].collect.channel",
+			want: "source type \"sqlite\" does not support notification channels",
+		},
+		{
 			name: "watch_in_poll_mode",
 			rule: "incorrect collection configuration",
 			doc: sqliteDoc(`  - name: app_thing

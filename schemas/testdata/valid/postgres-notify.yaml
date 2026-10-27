@@ -66,4 +66,5 @@ metrics:
       scale: 1
     collect:
       mode: auto
+      channel: billing_payments_changed
       fallback_interval: 5m

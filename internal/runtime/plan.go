@@ -74,7 +74,9 @@ func compilePlans(cfg *config.Config, sources map[string]source.Source, log *slo
 			plan.Watch = &source.WatchSpec{Channel: m.Collect.Channel}
 		}
 
-		warnDegradedMode(log, m, src)
+		if err := resolveMode(log, m, src); err != nil {
+			return nil, fmt.Errorf("metric %q: %w", m.Name, err)
+		}
 
 		out = append(out, compiled{
 			plan: plan,
@@ -93,35 +95,48 @@ func compilePlans(cfg *config.Config, sources map[string]source.Source, log *slo
 	return out, nil
 }
 
-// Warns when a plan asks for a mechanism its source instance cannot provide.
+// Resolves how a plan will be refreshed and enforces require_notifications.
 //
 // Offline validation checks the declared capability table, which records what the
 // data source supports; the constructed instance reports what this build implements.
 // Wiring is the only place holding both, so it is the only place that can notice.
 //
-// Not an error: the configuration is forward-valid, and §9.5 permits explicitly
-// sanctioned fallback polling. Reconciliation is mandatory for change-driven modes,
-// so the plan still refreshes — just on its fallback interval rather than on change.
-func warnDegradedMode(log *slog.Logger, m *config.Metric, src source.Source) {
+// Degrading is not an error: the configuration is forward-valid, and §9.5 permits
+// explicitly sanctioned fallback polling. Reconciliation is mandatory for
+// change-driven modes, so the plan still refreshes — just on its fallback interval
+// rather than on change. require_notifications turns that downgrade into a startup
+// failure for operators who depend on notification latency.
+func resolveMode(log *slog.Logger, m *config.Metric, src source.Source) error {
 	caps := src.Capabilities()
+	attrs := []any{"metric", m.Name, "source", m.Source, "requested", string(m.Collect.Mode)}
+
 	switch m.Collect.Mode {
 	case config.ModeNotify:
-		if !caps.Notifications {
-			log.Warn("collection mode degraded to reconcile-only",
-				"metric", m.Name,
-				"source", m.Source,
-				"requested", string(m.Collect.Mode),
-				"reason", "this build implements no change observation for the source type",
-				"refresh_interval", m.Collect.FallbackInterval.String())
+		if caps.Notifications {
+			return nil
 		}
+		if m.Collect.RequireNotifications {
+			return fmt.Errorf("notifications are required but source %q does not deliver them", m.Source)
+		}
+		log.Warn("collection mode degraded to reconcile-only",
+			append(attrs,
+				"reason", "this build implements no change observation for the source type",
+				"refresh_interval", m.Collect.FallbackInterval.String())...)
 	case config.ModeAuto:
-		if !caps.Notifications && !caps.ChangeTokens {
+		if m.Collect.RequireNotifications && !caps.Notifications {
+			return fmt.Errorf("require_notifications is set but source %q does not deliver notifications", m.Source)
+		}
+		switch {
+		case caps.Notifications:
+			log.Info("collection mode resolved to notifications", attrs...)
+		case caps.ChangeTokens:
+			log.Info("collection mode resolved to change tokens", attrs...)
+		default:
 			log.Info("collection mode resolved to polling",
-				"metric", m.Name,
-				"source", m.Source,
-				"refresh_interval", m.Collect.FallbackInterval.String())
+				append(attrs, "refresh_interval", m.Collect.FallbackInterval.String())...)
 		}
 	}
+	return nil
 }
 
 // Builds the source-agnostic query definition for a metric.

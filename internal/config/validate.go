@@ -386,6 +386,12 @@ func validateModeAgainstCapabilities(v *collector, path string, m *Metric, st So
 		if !c.Notifications && !c.ChangeTokens && !c.Poll {
 			v.errorf(path+".collect.mode", "source type %q advertises no collection mechanism", st)
 		}
+		switch {
+		case c.Notifications && m.Collect.Channel == "":
+			v.errorf(path+".collect.channel", "auto mode on source type %q resolves to notifications and requires a channel", st)
+		case !c.Notifications && m.Collect.Channel != "":
+			v.errorf(path+".collect.channel", "source type %q does not support notification channels", st)
+		}
 	}
 }
 
@@ -514,6 +520,9 @@ func validateCollect(v *collector, path string, m *Metric) {
 		}
 		if m.Collect.Watch != nil {
 			v.errorf(cp+".watch", "watch applies only to notify and auto modes")
+		}
+		if m.Collect.RequireNotifications {
+			v.errorf(cp+".require_notifications", "require_notifications applies only to notify and auto modes")
 		}
 	case ModeNotify:
 		if m.Collect.Channel == "" {

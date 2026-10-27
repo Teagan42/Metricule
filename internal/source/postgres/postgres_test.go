@@ -31,13 +31,13 @@ func TestNewReportsIdentity(t *testing.T) {
 	}
 }
 
-// M1 implements querying only; notifications arrive in M2 (§19).
+// M2 implements querying and notifications; triggers are still M3 (§19).
 func TestCapabilitiesReportOnlyImplementedSupport(t *testing.T) {
 	s, err := New(source.Settings{ID: "appdb", Type: source.TypePostgres, Raw: validSettings()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	want := source.Capabilities{Query: true, Poll: true}
+	want := source.Capabilities{Query: true, Poll: true, Notifications: true}
 	if got := s.Capabilities(); got != want {
 		t.Errorf("Capabilities() = %+v, want %+v", got, want)
 	}

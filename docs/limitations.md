@@ -7,11 +7,9 @@ Several entries are deliberate design limits rather than unfinished work; those 
 marked **by design** and will not change. Where a limitation has a planned fix, the
 milestone is named.
 
-> **Status.** Describes the M1 release (v0.3.0) plus the SQLite change observer.
-> Collection works end to end and SQLite `auto` plans react to `PRAGMA
-> data_version`. PostgreSQL `notify` plans still reconcile on their fallback
-> interval until `LISTEN` lands, so the entry marked **M2 limitation** remains
-> current for PostgreSQL.
+> **Status.** Describes the M1 release (v0.3.0) plus M2 change-aware refresh.
+> Collection works end to end, PostgreSQL plans can use `LISTEN/NOTIFY`, and SQLite
+> `auto` plans react to `PRAGMA data_version`.
 
 ## Observability semantics
 
@@ -86,19 +84,16 @@ metrics from different sources were read at the same instant.
 
 ## Collection modes
 
-### `mode: notify` currently degrades to reconcile-only
+### `mode: notify` requires an adapter that can deliver notifications
 
-**M2 limitation.** PostgreSQL `LISTEN/NOTIFY` is not implemented yet. Until then a
-notify plan validates (the capability table correctly records that PostgreSQL supports
-notifications) but refreshes only on its `fallback_interval`.
+`notify` is implemented for PostgreSQL through a dedicated `LISTEN` connection.
+Validation rejects it on a source type that does not advertise notifications. If a
+build implements less than the declared capability table, startup logs the downgrade
+to reconcile-only rather than failing. Set `require_notifications: true` to make that
+downgrade fatal.
 
-SQLite change observation is implemented: `auto` plans compare `PRAGMA data_version`
-on a pinned connection and refresh when it advances.
-
-This is sanctioned degraded operation under §9.5, not a defect, but it means refresh
-latency is the fallback interval rather than near-immediate. Startup logs the
-downgrade. A `require_notifications` option — so an operator can demand a hard failure
-instead — lands in M2, when it has a second possible outcome.
+SQLite cannot deliver notifications, so use `auto` there: it compares
+`PRAGMA data_version` on a pinned connection and refreshes when it advances.
 
 ### `manual` and `cdc` are rejected
 

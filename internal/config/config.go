@@ -203,9 +203,12 @@ type Collect struct {
 	// FallbackInterval forces reconciliation for notify and auto modes. Mandatory
 	// because notification delivery is not durable (AD-005).
 	FallbackInterval Duration `yaml:"fallback_interval,omitempty"`
-	Debounce         Duration `yaml:"debounce,omitempty"`
-	Jitter           Duration `yaml:"jitter,omitempty"`
-	Watch            *Watch   `yaml:"watch,omitempty"`
+	// RequireNotifications fails startup when the source cannot deliver
+	// notifications, instead of degrading to reconcile-only or change tokens.
+	RequireNotifications bool     `yaml:"require_notifications,omitempty"`
+	Debounce             Duration `yaml:"debounce,omitempty"`
+	Jitter               Duration `yaml:"jitter,omitempty"`
+	Watch                *Watch   `yaml:"watch,omitempty"`
 }
 
 // Watch narrows change observation to a scope.

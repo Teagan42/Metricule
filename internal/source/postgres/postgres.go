@@ -18,10 +18,9 @@
 //
 // # Known limitations
 //
-// M1 scope is querying. LISTEN/NOTIFY (§9.2) is M2 and trigger management (§9.3)
-// is M3, so Capabilities reports neither. pool.max_idle becomes a steady-state
-// ceiling rather than a hard one, because pgx bounds idle connections from
-// below.
+// Querying and LISTEN/NOTIFY (§9.2) are implemented. Trigger management (§9.3) is
+// M3, so Capabilities does not report it. pool.max_idle becomes a steady-state
+// ceiling rather than a hard one, because pgx bounds idle connections from below.
 package postgres
 
 import (
@@ -42,10 +41,9 @@ var ErrNotOpen = errors.New("postgres: source is not open")
 // Capabilities this build delivers.
 //
 // Narrower than the declared table in internal/source/capabilities.go, which also
-// claims Notifications and TriggerManagement. Those are M2 and M3 work; reporting
-// them before Watch exists would make the scheduler select a mode this adapter
-// cannot serve (rule 4). Widen this when LISTEN/NOTIFY lands.
-var implemented = source.Capabilities{Query: true, Poll: true}
+// claims TriggerManagement. That is M3 work; reporting it before provisioning
+// exists would claim a capability this adapter cannot serve (rule 4).
+var implemented = source.Capabilities{Query: true, Poll: true, Notifications: true}
 
 // Register the factory. Capabilities are declared by internal/source (ADR 0005).
 func init() { source.Register(source.TypePostgres, New) }

@@ -28,10 +28,9 @@ See [ADR 0007](adr/0007-schema-validation-parity.md).
 
 > **Status.** `metricule validate`, `metricule serve`, `metricule test`,
 > `metricule config schema`, and `metricule version` work today. Polling, mapping,
-> snapshot publication, and exposition are implemented, and SQLite `auto` plans
-> observe `PRAGMA data_version`. PostgreSQL `notify` plans reconcile on
-> `fallback_interval` until `LISTEN` lands; managed triggers validate but provision
-> nothing until M3.
+> snapshot publication, exposition, PostgreSQL `LISTEN/NOTIFY`, and SQLite
+> `data_version` observation are implemented. Managed triggers validate but
+> provision nothing until M3.
 
 ## Document structure
 
@@ -361,8 +360,9 @@ Omit the whole block and the metric polls on the inherited interval.
 | `mode` | enum | no | `poll` | `poll`, `notify`, or `auto`. |
 | `interval` | duration | no | `defaults.collection.interval` | Poll period. `poll` mode only. |
 | `timeout` | duration | no | `defaults.collection.timeout` | Bounds one collection. Must be positive. A timeout that is not shorter than `interval` produces a warning, because collections can then overlap continuously. |
-| `channel` | string | for `notify` | — | PostgreSQL `NOTIFY` channel. Rejected in `poll` mode. |
+| `channel` | string | for `notify`; for `auto` on a notifying source | — | PostgreSQL `NOTIFY` channel. Rejected in `poll` mode and on sources without notification support. |
 | `fallback_interval` | duration | no | `defaults.collection.reconcile_interval` | Reconciliation period. Required and always set for `notify` and `auto`. |
+| `require_notifications` | boolean | no | `false` | Fail startup instead of degrading when the source cannot deliver notifications. `notify` and `auto` only. |
 | `debounce` | duration | no | `defaults.collection.debounce` | Collapses a burst of change signals into one refresh. Must not be negative. |
 | `jitter` | duration | no | `defaults.collection.jitter` | Random offset added to scheduled collections, so unrelated metrics do not all query on the same tick. Must not be negative. |
 | `watch.tables` | list | no | `[]` | Narrows change observation to these tables. `notify` and `auto` only. |
@@ -376,10 +376,14 @@ Omit the whole block and the metric polls on the inherited interval.
   `fallback_interval`. Requires a source type that advertises notifications, which today
   means `postgres`. Reconciliation is mandatory and not optional tuning: notifications
   are invalidation signals, not a durable event log (AD-005), so a missed signal must be
-  repaired by a periodic sweep.
+  repaired by a periodic sweep. Startup logs when this degrades to reconcile-only; set
+  `require_notifications: true` to fail instead.
 - **`auto`** — use the best mechanism the adapter advertises, falling back through
-  notifications, change tokens, and polling. On `sqlite` this selects `data_version`
-  observation. `fallback_interval` applies as for `notify`.
+  notifications, change tokens, and polling. On `postgres` this selects `LISTEN/NOTIFY`;
+  on `sqlite` it compares `PRAGMA data_version` at the source's
+  `change_check_interval`. Startup logs which mechanism was selected.
+  `fallback_interval` applies as for `notify`. `require_notifications: true` makes
+  change tokens insufficient: the source must deliver notifications.
 
 `manual` and `cdc` appear in the specification as reserved names and are **rejected**
 in v0.1 rather than accepted and ignored.
@@ -407,7 +411,7 @@ Detected classes (§5.5):
 | Duplicates and conflicts | duplicate metric names, duplicate states, a label in both `labels` and `static_labels`, colliding server paths |
 | References | a metric naming an undeclared source, a request path outside `allowed_paths`, a source type with no adapter in this build |
 | Naming | invalid metric and label names, the `metricule_` prefix, `_bucket` and `_sum` suffixes, the `__` label prefix, the generated `state` label |
-| Collection | unsupported or reserved modes, `notify` without a channel, `channel` or `watch` in the wrong mode, unsupported watch events, negative durations |
+| Collection | unsupported or reserved modes, `notify` without a channel, `auto` without a channel on a notifying source, `channel` or `watch` in the wrong mode, `require_notifications` outside `notify`/`auto`, unsupported watch events, negative durations |
 | Adapter capability | `notify` on a source type that does not support it, a `query` block on an HTTP source, a `request` block on a SQL source, a non-GET method |
 | Credentials | empty or ambiguous secret references, `bearer` without a token, `basic` without a username or password, mismatched authentication fields |
 | Selectors | malformed JSONPath in `value`, `rows`, or `labels` |
@@ -419,14 +423,10 @@ shape, and source reachability. Those need a live source — use
 
 ## Known limitations
 
-- **Change-driven refresh is partially implemented.** SQLite `auto` plans observe
-  `PRAGMA data_version`. PostgreSQL `notify` and `auto` plans still refresh only on
-  `fallback_interval` until `LISTEN` lands. See
-  [`limitations.md`](limitations.md#mode-notify-currently-degrades-to-reconcile-only).
-- **Trigger management validates but does nothing.** `triggers.manage: true` is
-  accepted and ignored until M3; startup logs a warning.
+- **Managed triggers provision nothing.** `triggers.manage: true` is accepted and
+  ignored until M3; startup logs a warning.
 - Histograms, summaries, event-derived counters, expression evaluation, non-GET HTTP
-  methods, and the `manual` and `cdc` collection modes are out of scope for M1.
+  methods, and the `manual` and `cdc` collection modes are out of scope for M2.
 
 ## Examples
 
