@@ -225,7 +225,7 @@ func (m *Manager) Status(ctx context.Context, t Target) (StatusReport, error) {
 	}
 
 	desired := map[string]struct{}{}
-	for _, sub := range sortedSubscriptions(t.Subscriptions) {
+	for _, sub := range normalizeSubscriptions(t.Subscriptions) {
 		tableSchema, tableName, err := splitTable(sub.Table)
 		if err != nil {
 			return report, err
@@ -385,7 +385,7 @@ func buildPlan(ctx context.Context, q querier, t Target) (Report, error) {
 	}
 
 	desired := map[string]struct{}{}
-	for _, sub := range sortedSubscriptions(t.Subscriptions) {
+	for _, sub := range normalizeSubscriptions(t.Subscriptions) {
 		tableSchema, tableName, err := splitTable(sub.Table)
 		if err != nil {
 			return report, fmt.Errorf("source %q: %w", t.SourceID, err)
@@ -472,9 +472,46 @@ func buildPlan(ctx context.Context, q querier, t Target) (Report, error) {
 	return report, nil
 }
 
-// sortedSubscriptions orders by table then channel for deterministic plans.
-func sortedSubscriptions(subs []Subscription) []Subscription {
-	out := append([]Subscription(nil), subs...)
+// normalizeSubscriptions merges duplicate table/channel pairs and orders the
+// result for deterministic plans.
+//
+// Two subscriptions for one table and channel would generate the same trigger
+// twice and fail the transaction. Their event lists union, and an empty list means
+// all events.
+func normalizeSubscriptions(subs []Subscription) []Subscription {
+	type key struct{ table, channel string }
+	type merged struct {
+		events map[string]struct{}
+		all    bool
+	}
+
+	groups := map[key]*merged{}
+	for _, s := range subs {
+		k := key{table: s.Table, channel: s.Channel}
+		g, ok := groups[k]
+		if !ok {
+			g = &merged{events: map[string]struct{}{}}
+			groups[k] = g
+		}
+		if len(s.Events) == 0 {
+			g.all = true
+		}
+		for _, e := range s.Events {
+			g.events[e] = struct{}{}
+		}
+	}
+
+	out := make([]Subscription, 0, len(groups))
+	for k, g := range groups {
+		sub := Subscription{Table: k.table, Channel: k.channel}
+		if !g.all {
+			for e := range g.events {
+				sub.Events = append(sub.Events, e)
+			}
+			sort.Strings(sub.Events)
+		}
+		out = append(out, sub)
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Table != out[j].Table {
 			return out[i].Table < out[j].Table

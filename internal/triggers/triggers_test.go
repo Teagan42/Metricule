@@ -103,6 +103,23 @@ func TestSubscriptionHashTracksTheDefinition(t *testing.T) {
 	}
 }
 
+func TestNormalizeSubscriptionsMergesDuplicates(t *testing.T) {
+	got := normalizeSubscriptions([]Subscription{
+		{Table: "public.jobs", Channel: "c", Events: []string{"insert"}},
+		{Table: "public.jobs", Channel: "c", Events: []string{"update", "insert"}},
+		{Table: "public.users", Channel: "c"},
+	})
+	if len(got) != 2 {
+		t.Fatalf("normalized = %+v, want two pairs", got)
+	}
+	if got[0].Table != "public.jobs" || len(got[0].Events) != 2 {
+		t.Errorf("jobs subscription = %+v, want insert,update", got[0])
+	}
+	if len(got[1].Events) != 0 {
+		t.Errorf("empty event list must stay empty (all), got %v", got[1].Events)
+	}
+}
+
 func TestTargetValidation(t *testing.T) {
 	valid := Target{
 		SourceID: "appdb", Schema: "metricule",
