@@ -156,6 +156,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: binary-*
+
+      # The image job's build record is not a release asset, and downloading it
+      # failed the attach step repeatedly. Fetch only what is published.
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          name: sbom
 
       - name: Collect release assets
         run: |
