@@ -355,6 +355,10 @@
         },
         "debounce": { "$ref": "#/$defs/duration" },
         "jitter": { "$ref": "#/$defs/duration" },
+        "require_notifications": {
+          "type": "boolean",
+          "description": "Fail startup instead of degrading when the source cannot deliver notifications. notify and auto only."
+        },
         "watch": {
           "type": "object",
           "additionalProperties": false,

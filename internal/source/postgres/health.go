@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/teagan42/metricule/internal/source"
 	"github.com/teagan42/metricule/internal/telemetry"
 )
 
@@ -21,27 +22,6 @@ const (
 	openAttempts = 4
 )
 
-// Diagnostics is an explicit health report for operator-facing diagnostics (§9.1).
-type Diagnostics struct {
-	// Target is credential-free: host:port/database.
-	Target string
-	Up     bool
-	// CheckedAt is zero until the first health check.
-	CheckedAt time.Time
-	// LastSuccess is zero until the first successful check.
-	LastSuccess time.Time
-	// ConsecutiveFailures resets on any successful check.
-	ConsecutiveFailures int
-	// Reconnects counts down-to-up transitions. Monotonic for the life of the
-	// Source, including across Close and a later Open: internal/runtime derives a
-	// counter delta from it, so resetting it would retract published samples.
-	Reconnects int
-	// LastError is the most recent failure, retained after recovery.
-	LastError error
-	// Reason classifies LastError.
-	Reason telemetry.Reason
-}
-
 // Tracks reachability across checks so backoff and reconnects are observable.
 type health struct {
 	mu          sync.Mutex
@@ -49,7 +29,7 @@ type health struct {
 	checkedAt   time.Time
 	lastSuccess time.Time
 	failures    int
-	reconnects  int
+	reconnects  uint64
 	retryAfter  time.Time
 	lastErr     error
 	reason      telemetry.Reason
@@ -92,10 +72,10 @@ func (h *health) gated(now time.Time) error {
 	return h.lastErr
 }
 
-func (h *health) snapshot() Diagnostics {
+func (h *health) snapshot() source.Diagnostics {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return Diagnostics{
+	return source.Diagnostics{
 		Up:                  h.up,
 		CheckedAt:           h.checkedAt,
 		LastSuccess:         h.lastSuccess,
@@ -104,6 +84,18 @@ func (h *health) snapshot() Diagnostics {
 		LastError:           h.lastErr,
 		Reason:              h.reason,
 	}
+}
+
+// recordReconnect counts a listener that re-established its subscription.
+//
+// Separate from succeed: query health and listener health are distinct, and a
+// listener outage while queries still work degrades change detection without
+// making the source uncollectable. The reconnect counter is what makes the
+// degradation visible.
+func (h *health) recordReconnect() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reconnects++
 }
 
 // backoffFor returns the delay before retry number n, capped at backoffMax.
@@ -125,7 +117,7 @@ func backoffFor(attempt int) time.Duration {
 }
 
 // Diagnostics reports the latest health state without contacting the database.
-func (s *Source) Diagnostics() Diagnostics {
+func (s *Source) Diagnostics() source.Diagnostics {
 	d := s.health.snapshot()
 	d.Target = s.target
 	return d
