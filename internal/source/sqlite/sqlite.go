@@ -96,13 +96,14 @@ func (s *Source) ID() string { return s.id }
 // Type returns the adapter type identifier.
 func (s *Source) Type() string { return source.TypeSQLite }
 
-// Capabilities reports the capabilities Agent 0 declared for this type.
+// Capabilities reports what this build implements.
 //
-// Read from the registry rather than restated, so an adapter cannot drift from
-// the configuration contract (rule 3).
+// The declared table records what the source type can support, including change
+// tokens. This instance does not implement Watch yet, so reporting ChangeTokens
+// would make an auto plan silently poll instead of observing data_version. Widen
+// this when the M2 observer lands (rule 3).
 func (s *Source) Capabilities() source.Capabilities {
-	c, _ := source.CapabilitiesFor(source.TypeSQLite)
-	return c
+	return source.Capabilities{Query: true, Poll: true}
 }
 
 // Open connects and verifies that the connection is read-only and reachable.

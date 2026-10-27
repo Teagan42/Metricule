@@ -196,7 +196,7 @@ validation time, before any connection is opened.
 | `triggers.dsn` | secret ref | no | falls back to `dsn` | Separate provisioning credentials. Omitting it warns, because the collection role should not hold schema-owner privileges. |
 
 Trigger management is scheduled for M3. Setting `manage: true` validates today but
-provisions nothing yet.
+provisions nothing; startup logs a warning that the block is ignored.
 
 ### `type: sqlite`
 
@@ -424,7 +424,7 @@ shape, and source reachability. Those need a live source — use
   `notify` plan reconciles rather than listening. See
   [`limitations.md`](limitations.md#mode-notify-currently-degrades-to-reconcile-only).
 - **Trigger management validates but does nothing.** `triggers.manage: true` is
-  accepted and ignored until M3.
+  accepted and ignored until M3; startup logs a warning.
 - Histograms, summaries, event-derived counters, expression evaluation, non-GET HTTP
   methods, and the `manual` and `cdc` collection modes are out of scope for M1.
 

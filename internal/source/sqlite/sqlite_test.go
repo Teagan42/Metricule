@@ -34,16 +34,13 @@ func TestRegisteredWithTheSharedRegistry(t *testing.T) {
 	}
 }
 
-// The capability table is owned by Agent 0; an adapter must not weaken it (rule 3).
-func TestCapabilitiesMatchTheDeclaredTable(t *testing.T) {
+// M1 implements querying only; change tokens arrive in M2 (§10.2).
+func TestCapabilitiesReportOnlyImplementedSupport(t *testing.T) {
 	s, err := New(testSettings("/tmp/absent.db"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	want, ok := source.CapabilitiesFor(source.TypeSQLite)
-	if !ok {
-		t.Fatal("sqlite has no declared capabilities")
-	}
+	want := source.Capabilities{Query: true, Poll: true}
 	if got := s.Capabilities(); got != want {
 		t.Errorf("capabilities = %+v, want %+v", got, want)
 	}
