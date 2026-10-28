@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/Teagan42/Metricule/compare/v0.5.0...v0.5.1) (2026-10-28)
+
+
+### Documentation
+
+* **examples:** add production Compose stacks ([#33](https://github.com/Teagan42/Metricule/issues/33)) ([ecf4e65](https://github.com/Teagan42/Metricule/commit/ecf4e653dc0e1236bceed9d0a1a4cad1aa82c261))
+* **m4:** record release readiness evidence ([#35](https://github.com/Teagan42/Metricule/issues/35)) ([9f8456c](https://github.com/Teagan42/Metricule/commit/9f8456ce2f9b0b13d7f28aa9646d3dd403a0c154))
+
 ## [0.5.0](https://github.com/Teagan42/Metricule/compare/v0.4.0...v0.5.0) (2026-10-27)
 
 
