@@ -406,6 +406,35 @@ Omit the whole block and the metric polls on the inherited interval.
 `manual` and `cdc` appear in the specification as reserved names and are **rejected**
 in v0.1 rather than accepted and ignored.
 
+## Reloading
+
+Send `SIGHUP` to reload the configuration without restarting the process:
+
+```console
+$ kill -HUP "$(pgrep -f 'metricule serve')"
+# containers:
+$ docker kill --signal=HUP metricule
+```
+
+Reload re-reads the same `--config` path, resolves secrets again, compiles plans, and
+opens the new sources before retiring the old generation. If anything fails —
+invalid YAML, a missing secret, an unrecognized key, an unreachable source — the
+running configuration keeps serving and the reason is logged. There is no partial
+reload.
+
+| Reload behavior | Detail |
+|---|---|
+| Server block | Immutable for the process lifetime. Changing `listen` or any endpoint path requires a restart. |
+| Metrics | Added metrics appear after their first collection; removed metrics disappear immediately. |
+| Sources | New pools open first, old pools close after the swap. A source that fails to open aborts the reload. |
+| Change watchers | Old watchers stop, new ones subscribe. A `reconnect` event forces reconciliation on the new generation. |
+| Managed triggers | Applied for the new configuration. `cleanup_on_shutdown` runs only on process exit, never on reload. Setting `manage: false` leaves existing objects in place; remove them explicitly with `metricule triggers remove`. |
+| Readiness | May return `503` briefly after the swap until each new plan has been attempted. `/metrics` stays available throughout. |
+| Telemetry | Per-source reachability for removed sources is deleted. Historical counters remain, as counters do. |
+
+Reload is whole-document: there is no per-source or per-metric patch operation and no
+unauthenticated HTTP reload endpoint.
+
 ## Validation
 
 Validation runs in two stages. Decoding comes first and reports syntax, type and
