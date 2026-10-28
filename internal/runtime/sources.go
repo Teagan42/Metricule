@@ -42,6 +42,8 @@ func translate(name string, sc config.SourceConfig) (any, error) {
 	switch {
 	case sc.Postgres != nil:
 		return translatePostgres(name, sc.Postgres)
+	case sc.MySQL != nil:
+		return translateMySQL(name, sc.MySQL)
 	case sc.SQLite != nil:
 		p := sc.SQLite
 		return &source.SQLiteSettings{
@@ -72,6 +74,19 @@ func translatePostgres(name string, p *config.PostgresSource) (any, error) {
 		s.TLSCert, s.TLSKey = p.TLS.Cert, p.TLS.Key
 	}
 	return s, nil
+}
+
+func translateMySQL(name string, m *config.MySQLSource) (any, error) {
+	dsn, err := m.DSN.Resolve()
+	if err != nil {
+		return nil, fmt.Errorf("source %q: dsn: %w", name, err)
+	}
+	return &source.MySQLSettings{
+		DSN:          dsn,
+		MaxOpen:      m.Pool.MaxOpen,
+		MaxIdle:      m.Pool.MaxIdle,
+		QueryTimeout: m.QueryTimeout.Duration(),
+	}, nil
 }
 
 func translateHTTP(name string, h *config.HTTPSource) (any, error) {

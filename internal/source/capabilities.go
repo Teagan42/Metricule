@@ -29,6 +29,11 @@ func init() {
 		Query: true,
 		Poll:  true,
 	})
+
+	DeclareCapabilities(TypeMySQL, Capabilities{
+		Query: true,
+		Poll:  true,
+	})
 }
 
 // Adapter type identifiers.
@@ -36,4 +41,5 @@ const (
 	TypePostgres = "postgres"
 	TypeSQLite   = "sqlite"
 	TypeHTTP     = "http"
+	TypeMySQL    = "mysql"
 )

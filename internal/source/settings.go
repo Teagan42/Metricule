@@ -23,6 +23,15 @@ type PostgresSettings struct {
 	TLSKey      string
 }
 
+// MySQLSettings configures the MySQL adapter.
+type MySQLSettings struct {
+	// DSN is resolved. Log only through secrets.RedactDSN.
+	DSN          string
+	MaxOpen      int
+	MaxIdle      int
+	QueryTimeout time.Duration
+}
+
 // SQLiteSettings configures the SQLite adapter (§10). Read-only in v0.1 (AD-007).
 type SQLiteSettings struct {
 	Path                string

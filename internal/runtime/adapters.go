@@ -11,6 +11,7 @@ package runtime
 // a passing test suite and a useless program.
 import (
 	_ "github.com/teagan42/metricule/internal/source/httpjson"
+	_ "github.com/teagan42/metricule/internal/source/mysql"
 	_ "github.com/teagan42/metricule/internal/source/postgres"
 	_ "github.com/teagan42/metricule/internal/source/sqlite"
 )

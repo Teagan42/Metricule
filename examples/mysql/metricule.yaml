@@ -1,0 +1,42 @@
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+server:
+  listen: 0.0.0.0:9108
+
+sources:
+  appdb:
+    type: mysql
+    dsn:
+      env: MYSQL_DSN
+    pool:
+      max_open: 4
+      max_idle: 2
+    query_timeout: 5s
+
+metrics:
+  - name: app_jobs_pending
+    help: Jobs accepted but not yet running
+    type: gauge
+    source: appdb
+    query:
+      sql: SELECT COUNT(*) AS value FROM jobs WHERE state = 'queued'
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
+
+  - name: app_jobs_by_state
+    help: Jobs by pipeline state
+    type: gauge
+    source: appdb
+    query:
+      sql: SELECT state, COUNT(*) AS value FROM jobs GROUP BY state
+    mapping:
+      value: value
+      labels:
+        state: state
+    collect:
+      mode: poll
+      interval: 30s

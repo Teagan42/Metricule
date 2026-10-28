@@ -142,6 +142,8 @@ func validateSources(v *collector, c *Config) {
 			validateSQLite(v, path, s.SQLite)
 		case s.HTTP != nil:
 			validateHTTP(v, path, s.HTTP)
+		case s.MySQL != nil:
+			validateMySQL(v, path, s.MySQL)
 		default:
 			v.errorf(path, "source has no settings for type %q", s.Type)
 		}
@@ -188,6 +190,24 @@ func validatePostgres(v *collector, path string, p *PostgresSource) {
 			v.warnf(path+".triggers.dsn",
 				"trigger management will use the collection DSN, which should not hold schema-owner privileges (§14.2)")
 		}
+	}
+}
+
+func validateMySQL(v *collector, path string, m *MySQLSource) {
+	if err := m.DSN.Validate(); err != nil {
+		v.errorf(path+".dsn", "%s", err)
+	}
+	if m.Pool.MaxOpen <= 0 {
+		v.errorf(path+".pool.max_open", "must be greater than zero")
+	}
+	if m.Pool.MaxIdle < 0 {
+		v.errorf(path+".pool.max_idle", "must not be negative")
+	}
+	if m.Pool.MaxIdle > m.Pool.MaxOpen {
+		v.errorf(path+".pool.max_idle", "%d exceeds max_open %d", m.Pool.MaxIdle, m.Pool.MaxOpen)
+	}
+	if m.QueryTimeout <= 0 {
+		v.errorf(path+".query_timeout", "must be greater than zero")
 	}
 }
 
@@ -340,7 +360,7 @@ func validateMetricSource(v *collector, path string, m *Metric, c *Config, caps 
 	// A source's query shape is fixed by its type. Accepting the wrong block would
 	// mean advertising configuration the adapter cannot execute (rule 3).
 	switch s.Type {
-	case SourcePostgres, SourceSQLite:
+	case SourcePostgres, SourceSQLite, SourceMySQL:
 		if m.Query == nil {
 			v.errorf(path+".query", "source %q is type %s and requires a query block", m.Source, s.Type)
 		} else if strings.TrimSpace(m.Query.SQL) == "" {

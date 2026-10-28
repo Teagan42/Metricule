@@ -69,8 +69,17 @@ func (s *SourceConfig) UnmarshalYAML(n *yaml.Node) error {
 			return fmt.Errorf("http source: %w", err)
 		}
 		s.HTTP = &doc.HTTPSource
+	case SourceMySQL:
+		var doc struct {
+			Type        SourceType `yaml:"type"`
+			MySQLSource `yaml:",inline"`
+		}
+		if err := strictDecodeNode(n, &doc); err != nil {
+			return fmt.Errorf("mysql source: %w", err)
+		}
+		s.MySQL = &doc.MySQLSource
 	default:
-		return fmt.Errorf("line %d: unsupported source type %q (supported: postgres, sqlite, http)", n.Line, disc.Type)
+		return fmt.Errorf("line %d: unsupported source type %q (supported: postgres, sqlite, http, mysql)", n.Line, disc.Type)
 	}
 	return nil
 }
@@ -93,6 +102,11 @@ func (s SourceConfig) MarshalYAML() (any, error) {
 			Type SourceType `yaml:"type"`
 			*HTTPSource
 		}{s.Type, s.HTTP}, nil
+	case SourceMySQL:
+		return struct {
+			Type SourceType `yaml:"type"`
+			*MySQLSource
+		}{s.Type, s.MySQL}, nil
 	}
 	return nil, fmt.Errorf("unsupported source type %q", s.Type)
 }
