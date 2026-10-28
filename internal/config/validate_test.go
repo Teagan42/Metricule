@@ -422,7 +422,7 @@ metrics:
 			rule: "unsupported mapping types",
 			doc: sqliteDoc(`  - name: app_thing
     help: A thing
-    type: histogram
+    type: summary
     source: db
     query:
       sql: SELECT 1 AS value
@@ -433,7 +433,62 @@ metrics:
       interval: 30s
 `),
 			path: "metrics[0].type",
-			want: `unsupported type "histogram" (supported: gauge, counter, state_set)`,
+			want: `unsupported type "summary" (supported: gauge, counter, state_set, histogram)`,
+		},
+		{
+			name: "histogram_requires_bucket_fields",
+			rule: "unsupported mapping types",
+			doc: sqliteDoc(`  - name: app_duration
+    help: Duration
+    type: histogram
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
+`),
+			path: "metrics[0].mapping.buckets",
+			want: "require a bucket-bound field",
+		},
+		{
+			name: "gauge_rejects_histogram_fields",
+			rule: "unsupported mapping types",
+			doc: sqliteDoc(`  - name: app_thing
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+      buckets: le
+    collect:
+      mode: poll
+      interval: 30s
+`),
+			path: "metrics[0].mapping.buckets",
+			want: "apply only to histogram metrics",
+		},
+		{
+			name: "metric_name_count_suffix_reserved",
+			rule: "unsupported mapping types",
+			doc: sqliteDoc(`  - name: app_request_count
+    help: A thing
+    type: gauge
+    source: db
+    query:
+      sql: SELECT 1 AS value
+    mapping:
+      value: value
+    collect:
+      mode: poll
+      interval: 30s
+`),
+			path: "metrics[0].name",
+			want: `suffix "_count" is reserved`,
 		},
 		{
 			name: "metric_type_missing",
@@ -1924,7 +1979,7 @@ func TestDiagnosticStringFormat(t *testing.T) {
 func TestValidationErrorListsEveryErrorDiagnostic(t *testing.T) {
 	doc := sqliteDoc(`  - name: "bad name"
     help: A thing
-    type: histogram
+    type: summary
     source: warehouse
     mapping:
       value: value

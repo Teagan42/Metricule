@@ -1,4 +1,4 @@
-# _bucket belongs to histogram families, which v0.1 does not emit (§8.6).
+# _bucket is generated for histogram families (§8.6).
 apiVersion: metricule.io/v1alpha1
 kind: Exporter
 sources:

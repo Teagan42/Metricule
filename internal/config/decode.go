@@ -134,6 +134,12 @@ func (m *Mapping) UnmarshalYAML(n *yaml.Node) error {
 			err = v.Decode(&m.Rows)
 		case "value":
 			err = v.Decode(&m.Value)
+		case "buckets":
+			err = v.Decode(&m.Buckets)
+		case "count":
+			err = v.Decode(&m.Count)
+		case "sum":
+			err = v.Decode(&m.Sum)
 		case "labels":
 			err = v.Decode(&m.Labels)
 		case "static_labels":
@@ -162,6 +168,15 @@ func (m Mapping) MarshalYAML() (any, error) {
 	}
 	if m.Value != "" {
 		out["value"] = m.Value
+	}
+	if m.Buckets != "" {
+		out["buckets"] = m.Buckets
+	}
+	if m.Count != "" {
+		out["count"] = m.Count
+	}
+	if m.Sum != "" {
+		out["sum"] = m.Sum
 	}
 	if len(m.Labels) > 0 {
 		out["labels"] = m.Labels

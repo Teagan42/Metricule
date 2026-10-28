@@ -63,6 +63,26 @@ func Compile(spec Spec) (*Mapper, error) {
 		// fabricated zero (AD-010).
 		m.scale = 1
 	}
+	mp := spec.Metric.Mapping
+	if wire != snapshot.TypeHistogram && (mp.Buckets != "" || mp.Count != "" || mp.Sum != "") {
+		return nil, fmt.Errorf("metric %q: buckets, count, and sum apply only to histogram metrics", spec.Metric.Name)
+	}
+	if wire == snapshot.TypeHistogram {
+		if len(mp.States) > 0 {
+			return nil, fmt.Errorf("metric %q: states apply only to state_set metrics", spec.Metric.Name)
+		}
+		if m.scale < 0 {
+			return nil, fmt.Errorf("metric %q: histogram scale must be positive", spec.Metric.Name)
+		}
+		switch {
+		case mp.Buckets == "":
+			return nil, fmt.Errorf("metric %q: histogram requires mapping.buckets", spec.Metric.Name)
+		case mp.Count == "":
+			return nil, fmt.Errorf("metric %q: histogram requires mapping.count", spec.Metric.Name)
+		case mp.Sum == "":
+			return nil, fmt.Errorf("metric %q: histogram requires mapping.sum", spec.Metric.Name)
+		}
+	}
 	for name := range spec.Metric.Mapping.Labels {
 		m.labels = append(m.labels, name)
 	}
@@ -78,6 +98,9 @@ func (m *Mapper) Name() string { return m.spec.Metric.Name }
 // Returns an error rather than a partial family: a caller must never publish half a
 // collection (§8.2).
 func (m *Mapper) Map(rs source.ResultSet) (snapshot.Family, error) {
+	if m.wire == snapshot.TypeHistogram {
+		return m.mapHistograms(rs)
+	}
 	fam := snapshot.Family{
 		Name: m.spec.Metric.Name,
 		Help: m.spec.Metric.Help,
@@ -263,6 +286,8 @@ func wireType(t config.MetricType) (snapshot.Type, error) {
 	case config.MetricStateSet:
 		// A state_set is a mapping abstraction over gauges, not a wire type (§5.1).
 		return snapshot.TypeGauge, nil
+	case config.MetricHistogram:
+		return snapshot.TypeHistogram, nil
 	default:
 		return "", fmt.Errorf("unsupported metric type %q", t)
 	}

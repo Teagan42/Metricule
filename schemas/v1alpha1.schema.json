@@ -274,15 +274,16 @@
             "anyOf": [
               { "pattern": "^metricule_" },
               { "pattern": "_bucket$" },
-              { "pattern": "_sum$" }
+              { "pattern": "_sum$" },
+              { "pattern": "_count$" }
             ]
           },
           "description": "Prometheus metric name. The metricule_ prefix is reserved for exporter telemetry; _bucket and _sum are reserved for histogram and summary families."
         },
         "help": { "type": "string", "minLength": 1 },
         "type": {
-          "enum": ["gauge", "counter", "state_set"],
-          "description": "state_set emits one gauge series per configured state."
+          "enum": ["gauge", "counter", "state_set", "histogram"],
+          "description": "state_set emits one gauge series per configured state. histogram requires buckets, count, and sum in mapping."
         },
         "source": { "$ref": "#/$defs/identifier" },
         "query": {
@@ -325,7 +326,22 @@
         "value": {
           "type": "string",
           "minLength": 1,
-          "description": "Column name for SQL sources, RFC 9535 JSONPath for HTTP sources."
+          "description": "Column name for SQL sources, RFC 9535 JSONPath for HTTP sources. For a histogram, the cumulative bucket count."
+        },
+        "buckets": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Histogram only: cumulative bucket bound (le). +Inf is required in the data."
+        },
+        "count": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Histogram only: total observation count. Must equal the +Inf bucket and be constant per labelset."
+        },
+        "sum": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Histogram only: total observation sum."
         },
         "labels": {
           "type": "object",

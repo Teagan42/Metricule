@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -54,6 +55,12 @@ func validate(snap *Snapshot) error {
 }
 
 func validateFamily(f *Family) error {
+	if f.Type == TypeHistogram {
+		return validateHistograms(f)
+	}
+	if len(f.Histograms) > 0 {
+		return fmt.Errorf("histograms present on a %q family", f.Type)
+	}
 	seen := make(map[string]struct{}, len(f.Samples))
 	for i := range f.Samples {
 		s := &f.Samples[i]
@@ -68,6 +75,75 @@ func validateFamily(f *Family) error {
 			return fmt.Errorf("labels %s: %w", key, ErrDuplicateSeries)
 		}
 		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+// validateHistograms enforces the invariants Prometheus exposition assumes.
+//
+// The source owns bucket arithmetic, so this rejects a result that is not already
+// cumulative rather than silently rewriting it (P3).
+func validateHistograms(f *Family) error {
+	if len(f.Samples) > 0 {
+		return fmt.Errorf("samples present on a histogram family")
+	}
+	seen := make(map[string]struct{}, len(f.Histograms))
+	var labelNames []string
+
+	for i := range f.Histograms {
+		h := &f.Histograms[i]
+		if err := validateLabels(h.Labels); err != nil {
+			return err
+		}
+		names := make([]string, len(h.Labels))
+		for j, l := range h.Labels {
+			names[j] = l.Name
+		}
+		if labelNames == nil {
+			labelNames = names
+		} else if !slices.Equal(labelNames, names) {
+			return fmt.Errorf("histogram label names differ across series")
+		}
+
+		key := seriesKey(h.Labels)
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("labels %s: %w", key, ErrDuplicateSeries)
+		}
+		seen[key] = struct{}{}
+
+		if math.IsNaN(h.Sum) || math.IsInf(h.Sum, 0) {
+			return fmt.Errorf("sum %v: %w", h.Sum, ErrInvalidSample)
+		}
+		if len(h.Buckets) == 0 {
+			return fmt.Errorf("histogram has no buckets")
+		}
+
+		inf, ok := h.Buckets[math.Inf(1)]
+		if !ok {
+			return fmt.Errorf("histogram has no +Inf bucket")
+		}
+		if inf != h.Count {
+			return fmt.Errorf("+Inf bucket %d does not equal count %d", inf, h.Count)
+		}
+
+		bounds := make([]float64, 0, len(h.Buckets))
+		for bound := range h.Buckets {
+			if math.IsNaN(bound) || math.IsInf(bound, -1) {
+				return fmt.Errorf("bucket bound %v: %w", bound, ErrInvalidSample)
+			}
+			bounds = append(bounds, bound)
+		}
+		slices.Sort(bounds)
+
+		var previous uint64
+		for _, bound := range bounds {
+			count := h.Buckets[bound]
+			if count < previous {
+				return fmt.Errorf("bucket %v count %d is smaller than the previous bucket %d: buckets must be cumulative",
+					bound, count, previous)
+			}
+			previous = count
+		}
 	}
 	return nil
 }

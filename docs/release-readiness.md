@@ -85,8 +85,8 @@ Adapted from the implementation handoff, with the artifact or test that satisfie
 
 These are documented in [`limitations.md`](limitations.md); none is a release blocker:
 
-- No histograms, summaries, event-derived counters, expression evaluation, or
-  non-GET HTTP methods.
+- No summaries, event-derived counters, expression evaluation, or non-GET HTTP
+  methods. Histograms are supported only from persisted cumulative buckets.
 - `manual` and `cdc` modes are reserved.
 - `PRAGMA data_version` is database-wide.
 - PostgreSQL `pool.max_idle` is a steady-state target, not a hard cap.

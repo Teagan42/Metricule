@@ -268,7 +268,7 @@ flow.
 |---|---|---|---|---|
 | `name` | string | yes | — | Prometheus metric name. See naming rules below. |
 | `help` | string | yes | — | Family help text. Must not be empty. |
-| `type` | enum | yes | — | `gauge`, `counter`, or `state_set`. |
+| `type` | enum | yes | — | `gauge`, `counter`, `state_set`, or `histogram`. |
 | `source` | string | yes | — | Name of a declared source. |
 | `query` | object | for SQL sources | — | SQL definition. Rejected for `http` sources. |
 | `request` | object | for `http` sources | — | HTTP request definition. Rejected for SQL sources. |
@@ -288,14 +288,46 @@ flow.
   `state` label: `1` for the matching state and `0` for the rest. A Metricule mapping
   abstraction, not a separate Prometheus wire type. `mapping.states` is required, and
   bounds state cardinality by configuration so source data cannot grow it.
+- **`histogram`** — exposes cumulative buckets already persisted by the application.
+  `mapping.buckets`, `mapping.count`, and `mapping.sum` are required. The result must
+  contain a `+Inf` bucket whose value equals `count`, and bucket counts must be
+  non-decreasing as the bound grows. Metricule never cumulates or derives bucket
+  arithmetic; a non-cumulative result is an error, not a silent rewrite. Summaries are
+  not supported.
 
-Histograms and summaries are not supported in v0.1.
+#### Histogram example
+
+```yaml
+- name: app_request_duration_seconds
+  help: Request duration from persisted buckets
+  type: histogram
+  source: appdb
+  query:
+    sql: |
+      SELECT route, le, bucket_count AS value,
+             total_count AS count, total_sum AS sum
+      FROM request_latency_buckets
+  mapping:
+    value: value
+    buckets: le
+    count: count
+    sum: sum
+    labels:
+      route: route
+```
+
+`le` may be a number, a numeric string, or `+Inf`. `count` and `sum` must be constant
+for every row sharing a labelset. `mapping.scale` multiplies bucket bounds and the sum,
+never the counts, which is what unit conversion means for a histogram (for example
+seconds to milliseconds). A `null` in any histogram field follows `mapping.null` for
+the whole series: `omit` drops that histogram, `fail` fails the collection.
 
 ### Naming rules
 
 - `name` must match `^[a-zA-Z_:][a-zA-Z0-9_:]*$`.
 - The `metricule_` prefix is reserved for Metricule's own telemetry.
-- The `_bucket` and `_sum` suffixes are reserved for histogram and summary families.
+- The `_bucket`, `_sum`, and `_count` suffixes are reserved because Metricule generates
+  them for histogram families. Do not name a metric with one of them.
 - Label names must match `^[a-zA-Z_][a-zA-Z0-9_]*$`, and the `__` prefix is reserved by
   Prometheus.
 - Two metrics may not share a name.
@@ -326,12 +358,15 @@ and result shape are not checked offline — that needs a live connection, which
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `value` | string | yes | — | Column name for SQL sources; RFC 9535 JSONPath for HTTP sources. |
+| `value` | string | yes | — | Column name for SQL sources; RFC 9535 JSONPath for HTTP sources. For a histogram, the cumulative bucket count. |
+| `buckets` | string | for `histogram` | — | Column or selector for the cumulative bucket bound (`le`). Rejected for other types. |
+| `count` | string | for `histogram` | — | Column or selector for the total observation count. Rejected for other types. |
+| `sum` | string | for `histogram` | — | Column or selector for the total observation sum. Rejected for other types. |
 | `rows` | string | no | `""` | JSONPath selecting repeating elements for multi-series results. **HTTP sources only** — SQL results are already row-oriented. Empty means the result is one row. |
 | `labels` | map | no | `{}` | Label name to column name (SQL) or selector (JSON). |
 | `static_labels` | map | no | `{}` | Labels attached verbatim to every series. A name may not appear in both `labels` and `static_labels`. |
 | `states` | list | for `state_set` | — | Allowed state values. Must be non-empty and free of duplicates. Rejected for `gauge` and `counter`. |
-| `scale` | number | no | `1` | Multiplier for unit conversion, applied to the extracted value. |
+| `scale` | number | no | `1` | Multiplier for unit conversion, applied to the extracted value. For a histogram, applied to bucket bounds and the sum, not to counts. |
 | `null` | enum | no | `fail` | Null handling: `fail` fails the collection, `omit` drops the affected sample and keeps the rest. |
 
 Null is never coerced to zero (§12.4, AD-010). `fail` is the default precisely because
@@ -485,6 +520,7 @@ Validated in CI by `make validate-examples`, which runs `metricule validate` ove
 | [`examples/sqlite/metricule.yaml`](../examples/sqlite/metricule.yaml) | Read-only access, `auto` mode change detection, per-metric limits and `drop` policy |
 | [`examples/http/metricule.yaml`](../examples/http/metricule.yaml) | Bearer authentication, a path allow-list, array extraction, unit scaling, `state_set` |
 | [`examples/mysql/metricule.yaml`](../examples/mysql/metricule.yaml) | MySQL connection, aggregate and grouped metrics, polling |
+| [`examples/histogram/metricule.yaml`](../examples/histogram/metricule.yaml) | Persisted cumulative buckets exposed as a Prometheus histogram |
 
 `schemas/testdata/` holds the fixtures behind the schema parity tests, split into
 `valid`, `invalid-structural`, and `invalid-semantic`.

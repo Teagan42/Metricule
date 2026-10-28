@@ -19,6 +19,7 @@ new record here.
 | [0009](0009-adapter-error-and-diagnostic-contracts.md) | Adapter error classification and source diagnostics | Accepted |
 | [0010](0010-managed-trigger-ownership.md) | Managed trigger ownership and shape | Accepted |
 | [0011](0011-hot-configuration-reload.md) | Hot configuration reload by generation swap | Accepted |
+| [0012](0012-persisted-histogram-buckets.md) | Histograms from persisted cumulative buckets | Accepted |
 
 ## Format
 

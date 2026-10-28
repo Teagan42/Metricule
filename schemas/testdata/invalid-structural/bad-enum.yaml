@@ -7,7 +7,7 @@ sources:
 metrics:
   - name: app_request_duration
     help: Request duration
-    type: histogram
+    type: summary
     source: db
     query:
       sql: SELECT 1 AS value

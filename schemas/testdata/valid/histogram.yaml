@@ -1,0 +1,30 @@
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+metadata:
+  name: histogram-example
+
+sources:
+  appdb:
+    type: postgres
+    dsn:
+      env: APP_DATABASE_URL
+
+metrics:
+  - name: app_request_duration_seconds
+    help: Request duration from persisted buckets
+    type: histogram
+    source: appdb
+    query:
+      sql: |
+        SELECT route, le, bucket_count AS value, total_count AS count, total_sum AS sum
+        FROM request_latency_buckets
+    mapping:
+      value: value
+      buckets: le
+      count: count
+      sum: sum
+      labels:
+        route: route
+    collect:
+      mode: poll
+      interval: 30s

@@ -1,0 +1,33 @@
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+sources:
+  app:
+    type: sqlite
+    path: /data/app.db
+    readonly: true
+    busy_timeout: 3s
+
+metrics:
+  - name: app_request_duration_seconds
+    help: Request duration from persisted cumulative buckets
+    type: histogram
+    source: app
+    query:
+      sql: |
+        SELECT route,
+               le,
+               bucket_count AS value,
+               total_count  AS count,
+               total_sum    AS sum
+        FROM request_latency_buckets
+    mapping:
+      value: value
+      buckets: le
+      count: count
+      sum: sum
+      labels:
+        route: route
+    collect:
+      mode: poll
+      interval: 30s
