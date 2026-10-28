@@ -119,8 +119,8 @@ func triggerSubscriptions(cfg *config.Config, source string) ([]triggers.Subscri
 //
 // Failure is logged, not fatal: collection must keep working without managed
 // triggers, and the plans still reconcile on fallback_interval (§9.5).
-func (r *Runtime) provisionManagedTriggers(ctx context.Context) {
-	for _, target := range r.triggerTargets {
+func (r *Runtime) provisionManagedTriggers(ctx context.Context, targets []triggers.Target) {
+	for _, target := range targets {
 		for _, w := range target.Warnings {
 			r.log.Warn("managed triggers: "+w, "source", target.SourceID)
 		}
@@ -146,11 +146,11 @@ func (r *Runtime) provisionManagedTriggers(ctx context.Context) {
 }
 
 // Removes managed objects on shutdown only when explicitly configured.
-func (r *Runtime) cleanupManagedTriggers(ctx context.Context) {
+func (r *Runtime) cleanupManagedTriggers(ctx context.Context, targets []triggers.Target) {
 	ctx, cancel := context.WithTimeout(ctx, triggerOperationTimeout)
 	defer cancel()
 
-	for _, target := range r.triggerTargets {
+	for _, target := range targets {
 		if !target.Manage || !target.CleanupOnShutdown {
 			continue
 		}

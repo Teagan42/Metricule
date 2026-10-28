@@ -253,6 +253,26 @@ If you add a reason to `internal/telemetry/reason`, check consumers' allowlists 
 `reason.Cardinality` and `reason.DuplicateSeries` are deliberately not accepted from
 adapters: they are publication verdicts the snapshot store owns.
 
+### Hot reload cannot change the listener or endpoints
+
+**By design for M5.** A reload replaces sources, plans, and published state but keeps
+the bound listener. Changing `server.listen`, `metrics_path`, `health_path`, or
+`readiness_path` is rejected with a message requiring a restart. The alternative —
+draining and rebinding a socket — would drop scrapes for a window and complicate
+graceful shutdown.
+
+### Reload is a signal, not an API
+
+**By design for M5.** Configuration reload is triggered by `SIGHUP` on the process.
+There is no HTTP endpoint: the exporter has no authentication surface, so accepting
+configuration over HTTP would be an unauthenticated mutation path. Sending `SIGHUP`
+requires access to the process or container, which is the authorization boundary.
+
+A reload swaps to an empty store; scrapes serve no application series until each new
+plan completes its first collection. Readiness reports `503` during that window by
+design. Metrics removed from configuration disappear immediately, even though their
+historical counters remain in the exposition.
+
 ### The race detector needs a working C toolchain locally
 
 `-race` requires cgo, while every other target builds with `CGO_ENABLED=0` (ADR 0004).

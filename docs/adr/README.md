@@ -18,6 +18,7 @@ new record here.
 | [0008](0008-document-adapters-resolve-selectors.md) | Document adapters resolve selectors, not the mapping engine | Accepted |
 | [0009](0009-adapter-error-and-diagnostic-contracts.md) | Adapter error classification and source diagnostics | Accepted |
 | [0010](0010-managed-trigger-ownership.md) | Managed trigger ownership and shape | Accepted |
+| [0011](0011-hot-configuration-reload.md) | Hot configuration reload by generation swap | Accepted |
 
 ## Format
 

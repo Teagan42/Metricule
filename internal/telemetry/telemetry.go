@@ -171,6 +171,14 @@ func (m *Metrics) SetSourceUp(source string, up bool) {
 	m.sourceUp.WithLabelValues(source).Set(boolValue(up))
 }
 
+// DeleteSourceUp removes the reachability series for a source that no longer exists.
+//
+// A reload can drop a source. Without this, the last published 0/1 would stay in
+// the exposition forever and look like a live source.
+func (m *Metrics) DeleteSourceUp(source string) {
+	m.sourceUp.DeleteLabelValues(source)
+}
+
 // SourceReconnected counts a reconnection.
 func (m *Metrics) SourceReconnected(source string) {
 	m.sourceReconnect.WithLabelValues(source).Inc()

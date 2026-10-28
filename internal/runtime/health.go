@@ -25,13 +25,41 @@ const healthProbeTimeout = 5 * time.Second
 func (r *Runtime) healthLoop(ctx context.Context) error {
 	// Reconnect totals are monotonic per source; the counter advances by the delta
 	// so a restarted count can never make the exported counter go backwards.
-	seen := make(map[string]uint64, len(r.sources))
+	seen := make(map[string]uint64)
+	var current *generation
+	var known map[string]struct{}
 
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
 
 	for {
-		r.probeAll(ctx, seen)
+		gen := r.gen.Load()
+		if gen != nil {
+			if gen != current {
+				current = gen
+				// A new generation starts reconnect totals from zero and may drop
+				// sources entirely. Drop their reachability series so a removed
+				// source does not look permanently up.
+				nextSeen := make(map[string]uint64, len(gen.sources))
+				next := make(map[string]struct{}, len(gen.sources))
+				for name := range gen.sources {
+					next[name] = struct{}{}
+					// Preserve the reconnect high-water mark for a source that
+					// survives the reload, so its counter is not republished.
+					if v, ok := seen[name]; ok {
+						nextSeen[name] = v
+					}
+				}
+				seen = nextSeen
+				for name := range known {
+					if _, ok := next[name]; !ok {
+						r.metrics.DeleteSourceUp(name)
+					}
+				}
+				known = next
+			}
+			r.probeAll(ctx, gen, seen)
+		}
 
 		select {
 		case <-ctx.Done():
@@ -41,14 +69,19 @@ func (r *Runtime) healthLoop(ctx context.Context) error {
 	}
 }
 
-func (r *Runtime) probeAll(ctx context.Context, seen map[string]uint64) {
-	for _, name := range sortedSourceNames(r.sources) {
-		src := r.sources[name]
+func (r *Runtime) probeAll(ctx context.Context, gen *generation, seen map[string]uint64) {
+	for _, name := range sortedSourceNames(gen.sources) {
+		src := gen.sources[name]
 
 		probeCtx, cancel := context.WithTimeout(ctx, healthProbeTimeout)
 		err := src.Health(probeCtx)
 		cancel()
 
+		// A reload may have replaced this generation while the probe was running.
+		// Do not overwrite the new generation's reachability with an old result.
+		if r.gen.Load() != gen {
+			return
+		}
 		r.metrics.SetSourceUp(name, err == nil)
 		if err != nil {
 			r.log.Warn("source health check failed", "source", name, "error", err)

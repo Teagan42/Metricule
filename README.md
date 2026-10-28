@@ -30,6 +30,8 @@ Metricule reads it from there.
 - Scrapes never execute queries, so a slow database cannot slow a scrape.
 - Multiple sources — PostgreSQL, MySQL, SQLite, HTTP/JSON — in one deployment.
 - Change-driven refresh where the source supports it, polling where it does not.
+- Reload configuration on `SIGHUP` without dropping the listener; an invalid document
+  leaves the running configuration untouched.
 
 ## How it works
 

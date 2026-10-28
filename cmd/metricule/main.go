@@ -224,6 +224,32 @@ func runServe(stdout, stderr io.Writer, args []string) error {
 		"sources", len(cfg.Sources),
 		"metrics", len(cfg.Metrics))
 
+	// SIGHUP reloads the configuration in place. Invalid documents leave the
+	// running generation untouched.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hup:
+				next, ds, err := config.Load(*path)
+				for _, d := range ds.Warnings() {
+					log.Warn("reload configuration warning", "path", d.Path, "message", d.Message)
+				}
+				if err != nil {
+					log.Error("reload rejected", "error", err)
+					continue
+				}
+				if err := rt.Reload(ctx, next); err != nil {
+					log.Error("reload rejected", "error", err)
+				}
+			}
+		}
+	}()
+
 	if err := rt.Run(ctx); err != nil {
 		return err
 	}
