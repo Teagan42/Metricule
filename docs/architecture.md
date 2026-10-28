@@ -138,7 +138,8 @@ M4 adds end-to-end failure injection, the measured benchmark baseline in
 [`performance.md`](performance.md), production-shaped Compose stacks under
 [`examples/compose`](../examples/compose/postgres/README.md), and the release-gate
 audit in [`release-readiness.md`](release-readiness.md). M5 begins with the MySQL
-adapter and `SIGHUP` configuration reload; the remaining M5 list is deferred.
+adapter, `SIGHUP` configuration reload, and histograms from persisted cumulative
+buckets; the remaining M5 list is deferred.
 
 Known limitations, including several deliberate design limits, are recorded in
 [`limitations.md`](limitations.md).

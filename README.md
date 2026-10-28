@@ -32,6 +32,7 @@ Metricule reads it from there.
 - Change-driven refresh where the source supports it, polling where it does not.
 - Reload configuration on `SIGHUP` without dropping the listener; an invalid document
   leaves the running configuration untouched.
+- Gauges, counters, state sets, and histograms built from persisted cumulative buckets.
 
 ## How it works
 

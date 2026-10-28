@@ -44,10 +44,17 @@ breaks `rate()`.
 
 A `COUNT(*)` of current rows is a gauge, even when the metric name ends in `_total`.
 
-### Histograms and summaries are not supported
+### Summaries are not supported, and histograms must already be cumulative
 
-**By design for M1** (§8.5). Bucket construction from persisted aggregate data is
-deferred to M5 and only if the semantics can be verified.
+**By design** (§8.5). Summaries cannot be reconstructed from persisted aggregates
+without fabricating quantiles, so they remain out of scope.
+
+Histograms are supported only from data the application already stores as cumulative
+buckets. Metricule requires a `+Inf` bucket equal to `count`, a constant `count` and
+`sum` per labelset, and non-decreasing bucket counts. It never cumulates raw counts or
+derives a sum; a source that stores per-bucket deltas must use SQL to convert them.
+Histogram series consume `buckets + 2` against series limits, and scale applies to
+bounds and sum but not counts.
 
 ### Metricule exposes current state, not history
 
