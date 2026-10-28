@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/Teagan42/Metricule/compare/v0.7.0...v0.8.0) (2026-10-28)
+
+
+### Features
+
+* **histogram:** expose persisted cumulative buckets ([#40](https://github.com/Teagan42/Metricule/issues/40)) ([1ddcc6b](https://github.com/Teagan42/Metricule/commit/1ddcc6bc4d46a2618dee20092de6dbbe3231771f))
+
 ## [0.7.0](https://github.com/Teagan42/Metricule/compare/v0.6.0...v0.7.0) (2026-10-28)
 
 
