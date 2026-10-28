@@ -28,7 +28,7 @@ Metricule reads it from there.
 - No application code changes, and no SDK.
 - One container, one YAML file.
 - Scrapes never execute queries, so a slow database cannot slow a scrape.
-- Multiple sources — PostgreSQL, SQLite, HTTP/JSON — in one deployment.
+- Multiple sources — PostgreSQL, MySQL, SQLite, HTTP/JSON — in one deployment.
 - Change-driven refresh where the source supports it, polling where it does not.
 
 ## How it works

@@ -226,17 +226,19 @@ const (
 	SourcePostgres SourceType = "postgres"
 	SourceSQLite   SourceType = "sqlite"
 	SourceHTTP     SourceType = "http"
+	SourceMySQL    SourceType = "mysql"
 )
 
 // SourceConfig is a discriminated union over adapter settings.
 //
-// Exactly one of Postgres, SQLite, or HTTP is populated, matching Type.
+// Exactly one of Postgres, SQLite, HTTP, or MySQL is populated, matching Type.
 type SourceConfig struct {
 	Type SourceType
 
 	Postgres *PostgresSource
 	SQLite   *SQLiteSource
 	HTTP     *HTTPSource
+	MySQL    *MySQLSource
 }
 
 // PostgresSource configures the PostgreSQL adapter (§9).
@@ -273,6 +275,16 @@ type Triggers struct {
 	// DSN supplies separate provisioning credentials. Falls back to the query DSN,
 	// which normally lacks the required privileges (§14.2).
 	DSN secrets.Ref `yaml:"dsn,omitempty"`
+}
+
+// MySQLSource configures the MySQL adapter.
+//
+// TLS, timeouts, and character set are set through the DSN, which the driver
+// parses natively. multiStatements is rejected by the adapter.
+type MySQLSource struct {
+	DSN          secrets.Ref `yaml:"dsn"`
+	Pool         Pool        `yaml:"pool,omitempty"`
+	QueryTimeout Duration    `yaml:"query_timeout,omitempty"`
 }
 
 // SQLiteSource configures the SQLite adapter (§10). Read-only in v0.1 (AD-007).

@@ -136,6 +136,11 @@ func (d defaulter) source(s *SourceConfig, path string, defs Defaults) {
 		if p.Triggers != nil {
 			d.str(&p.Triggers.Schema, path+".triggers.schema", DefaultTriggerSchema)
 		}
+	case s.MySQL != nil:
+		p := s.MySQL
+		d.num(&p.Pool.MaxOpen, path+".pool.max_open", DefaultPoolMaxOpen)
+		d.num(&p.Pool.MaxIdle, path+".pool.max_idle", DefaultPoolMaxIdle)
+		d.dur(&p.QueryTimeout, path+".query_timeout", defs.Collection.Timeout.Duration())
 	case s.SQLite != nil:
 		p := s.SQLite
 		// AD-007 fixes SQLite access to read-only. An omitted `readonly` means

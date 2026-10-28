@@ -100,10 +100,10 @@ func TestDecodeRejections(t *testing.T) {
 kind: Exporter
 sources:
   db:
-    type: mysql
+    type: oracle
 metrics: []
 `,
-			want: `unsupported source type "mysql"`,
+			want: `unsupported source type "oracle"`,
 		},
 		{
 			name: "source_type_missing",

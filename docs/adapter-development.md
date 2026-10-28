@@ -6,7 +6,8 @@ source-agnostic, so an adapter is responsible for connection handling, query
 execution, and nothing else.
 
 Read `AGENTS.md` for the import rules and `docs/architecture.md` for where an adapter
-sits. The three shipped adapters are the reference implementations:
+sits. The shipped adapters are the reference implementations (PostgreSQL, MySQL, SQLite,
+HTTP/JSON):
 `internal/source/postgres`, `internal/source/sqlite`, `internal/source/httpjson`.
 
 ## The contract

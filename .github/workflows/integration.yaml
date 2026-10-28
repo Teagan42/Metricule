@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 # Each datastore integration job runs `make test-integration` against a real
-# PostgreSQL or SQLite instance: §22 rule 9 forbids substituting mocks where actual
+# PostgreSQL, MySQL, or SQLite instance: §22 rule 9 forbids substituting mocks where actual
 # datastore behavior is under test. HTTP/JSON is covered end to end through the real
 # binary in cmd/metricule. There is deliberately no placeholder
 # job here, because a green job that runs no tests misreports coverage.
@@ -94,6 +94,28 @@ jobs:
             || sudo useradd --uid 65532 --no-create-home --shell /usr/sbin/nologin metricule
           sudo -u metricule env "METRICULE_TEST_SHARED_DB=$METRICULE_TEST_SHARED_DB" \
             /tmp/sqlite-integration.test -test.v -test.run '^TestSharedVolumeCollection$'
+
+  mysql:
+    name: MySQL adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Testcontainers starts MySQL itself. The adapter's read-only enforcement,
+      # row limits, and cancellation are server behavior, so mocks are not usable.
+      - name: Integration tests
+        env:
+          CGO_ENABLED: 0
+        run: go test -tags=integration -timeout 15m -v ./tests/integration/mysql/...
+
+      - name: Integration tests with the race detector
+        env:
+          CGO_ENABLED: 1
+        run: go test -tags=integration -race -timeout 20m ./tests/integration/mysql/...
 
   image:
     name: Container image

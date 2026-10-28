@@ -8,7 +8,30 @@ import (
 	"time"
 
 	"github.com/teagan42/metricule/internal/config"
+	"github.com/teagan42/metricule/internal/secrets"
+	"github.com/teagan42/metricule/internal/source"
 )
+
+func TestBuildSourceTranslatesMySQL(t *testing.T) {
+	src, err := BuildSource("appdb", config.SourceConfig{
+		Type: config.SourceMySQL,
+		MySQL: &config.MySQLSource{
+			DSN:          secrets.Ref{Value: "metricule:secret@tcp(db.invalid:3306)/app"},
+			Pool:         config.Pool{MaxOpen: 3, MaxIdle: 1},
+			QueryTimeout: config.Duration(2 * time.Second),
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildSource: %v", err)
+	}
+	if src.Type() != source.TypeMySQL {
+		t.Errorf("type = %q", src.Type())
+	}
+	want := source.Capabilities{Query: true, Poll: true}
+	if got := src.Capabilities(); got != want {
+		t.Errorf("capabilities = %+v, want %+v", got, want)
+	}
+}
 
 // An auto plan whose source cannot observe change must say it is polling rather
 // than degrade silently.

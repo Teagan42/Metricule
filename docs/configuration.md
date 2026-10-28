@@ -172,6 +172,7 @@ the declared type, so a `sqlite` source rejects a `pool` block rather than ignor
 | `postgres` | PostgreSQL | yes | yes (`LISTEN`/`NOTIFY`) | yes | yes, opt-in |
 | `sqlite` | SQLite | yes | no | yes (`PRAGMA data_version`) | no |
 | `http` | HTTP/JSON | yes | no | yes (falls back to polling) | no |
+| `mysql` | MySQL | yes | no | yes (falls back to polling) | no |
 
 `notify` on a source type that does not advertise notifications is refused at
 validation time, before any connection is opened.
@@ -197,6 +198,23 @@ validation time, before any connection is opened.
 `serve` applies managed triggers at startup when `manage: true`; `metricule triggers
 plan|apply|status|remove` provisions, inspects, or removes them explicitly. See
 [`triggers.md`](triggers.md) for ownership markers, privileges, and failure behavior.
+
+### `type: mysql`
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `dsn` | secret ref | yes | — | MySQL DSN, for example `user:pass@tcp(db:3306)/app`. TLS and timeouts belong in the DSN. A DSN enabling `multiStatements` is rejected. |
+| `pool.max_open` | integer | no | `4` | Maximum open connections. Must be positive. |
+| `pool.max_idle` | integer | no | `2` | Maximum idle connections. Must not exceed `max_open`. |
+| `query_timeout` | duration | no | `defaults.collection.timeout` | Statement timeout for collection queries. |
+
+Every collection runs inside `START TRANSACTION READ ONLY`, so the server rejects
+writes even if a query is misconfigured. Grant the collection user `SELECT` only and
+keep `multiStatements` off; the adapter refuses a DSN that enables it. MySQL has no
+adapter-level TLS block — use the driver's `tls` DSN parameter.
+
+MySQL advertises querying and polling only. `notify` is rejected; `auto` resolves to
+polling.
 
 ### `type: sqlite`
 
@@ -437,6 +455,7 @@ Validated in CI by `make validate-examples`, which runs `metricule validate` ove
 | [`examples/postgres/metricule.yaml`](../examples/postgres/metricule.yaml) | Polling, `LISTEN`/`NOTIFY` with watch scope, opt-in managed triggers, a ledger-backed counter, TLS |
 | [`examples/sqlite/metricule.yaml`](../examples/sqlite/metricule.yaml) | Read-only access, `auto` mode change detection, per-metric limits and `drop` policy |
 | [`examples/http/metricule.yaml`](../examples/http/metricule.yaml) | Bearer authentication, a path allow-list, array extraction, unit scaling, `state_set` |
+| [`examples/mysql/metricule.yaml`](../examples/mysql/metricule.yaml) | MySQL connection, aggregate and grouped metrics, polling |
 
 `schemas/testdata/` holds the fixtures behind the schema parity tests, split into
 `valid`, `invalid-structural`, and `invalid-semantic`.

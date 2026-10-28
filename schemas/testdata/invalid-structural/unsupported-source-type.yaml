@@ -3,7 +3,7 @@ apiVersion: metricule.io/v1alpha1
 kind: Exporter
 sources:
   db:
-    type: mysql
+    type: oracle
     dsn:
       env: APP_DATABASE_URL
 metrics:
