@@ -107,6 +107,9 @@ const (
 	// MetricStateSet emits one gauge series per configured state, 1 for the active
 	// state and 0 for the rest. A mapping abstraction, not a wire type (§5.1).
 	MetricStateSet MetricType = "state_set"
+	// MetricHistogram exposes cumulative persisted buckets as a Prometheus
+	// histogram. The source owns bucket arithmetic; mapping does not cumulate.
+	MetricHistogram MetricType = "histogram"
 )
 
 // CollectMode selects the refresh mechanism (§7.1).
@@ -178,6 +181,13 @@ type Mapping struct {
 	Rows string
 	// Value selects the numeric sample: a column name for SQL, a selector for JSON.
 	Value string
+	// Buckets selects the cumulative bucket bound (`le`) for a histogram.
+	Buckets string
+	// Count selects the total observation count for a histogram. Every row for one
+	// labelset must agree, and it must equal the +Inf bucket.
+	Count string
+	// Sum selects the total observation sum for a histogram.
+	Sum string
 	// Labels maps label name to a column name or selector.
 	Labels map[string]string
 	// StaticLabels are attached verbatim to every series.

@@ -45,6 +45,10 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func emitFamily(ch chan<- prometheus.Metric, fam snapshot.Family) {
+	if fam.Type == snapshot.TypeHistogram {
+		emitHistograms(ch, fam)
+		return
+	}
 	valueType := prometheus.GaugeValue
 	if fam.Type == snapshot.TypeCounter {
 		valueType = prometheus.CounterValue
@@ -57,6 +61,33 @@ func emitFamily(ch chan<- prometheus.Metric, fam snapshot.Family) {
 		if err != nil {
 			// Surfaces through the registry's error handling instead of being
 			// silently dropped (P3).
+			ch <- prometheus.NewInvalidMetric(desc, err)
+			continue
+		}
+		ch <- m
+	}
+}
+
+// emitHistograms writes one Prometheus histogram per persisted series.
+//
+// Label names are fixed for the family at publication time, so one descriptor serves
+// every series and values are passed positionally.
+func emitHistograms(ch chan<- prometheus.Metric, fam snapshot.Family) {
+	if len(fam.Histograms) == 0 {
+		return
+	}
+	names := make([]string, len(fam.Histograms[0].Labels))
+	for i, l := range fam.Histograms[0].Labels {
+		names[i] = l.Name
+	}
+	desc := prometheus.NewDesc(fam.Name, fam.Help, names, nil)
+	for _, h := range fam.Histograms {
+		values := make([]string, len(h.Labels))
+		for i, l := range h.Labels {
+			values[i] = l.Value
+		}
+		m, err := prometheus.NewConstHistogram(desc, h.Count, h.Sum, h.Buckets, values...)
+		if err != nil {
 			ch <- prometheus.NewInvalidMetric(desc, err)
 			continue
 		}

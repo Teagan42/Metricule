@@ -331,9 +331,9 @@ func validateMetricName(v *collector, path string, m *Metric, seen map[string]in
 		seen[m.Name] = idx
 	}
 
-	// _bucket and _sum belong to histogram and summary families, which v0.1 does not
-	// emit. Reusing them would collide with a future real histogram (§8.6).
-	for _, suffix := range []string{"_bucket", "_sum"} {
+	// _bucket, _sum, and _count are generated suffixes on histogram and summary
+	// families. A family named with one would collide on exposition (§8.6).
+	for _, suffix := range []string{"_bucket", "_sum", "_count"} {
 		if strings.HasSuffix(m.Name, suffix) {
 			v.errorf(path+".name", "suffix %q is reserved for histogram and summary families", suffix)
 		}
@@ -477,6 +477,22 @@ func validateMapping(v *collector, path string, m *Metric, c *Config) {
 		if len(m.Mapping.States) > 0 {
 			v.errorf(mp+".states", "states apply only to state_set metrics")
 		}
+		if m.Mapping.Buckets != "" || m.Mapping.Count != "" || m.Mapping.Sum != "" {
+			v.errorf(mp+".buckets", "buckets, count, and sum apply only to histogram metrics")
+		}
+	case MetricHistogram:
+		if len(m.Mapping.States) > 0 {
+			v.errorf(mp+".states", "states apply only to state_set metrics")
+		}
+		if m.Mapping.Buckets == "" {
+			v.errorf(mp+".buckets", "histogram metrics require a bucket-bound field")
+		}
+		if m.Mapping.Count == "" {
+			v.errorf(mp+".count", "histogram metrics require a count field")
+		}
+		if m.Mapping.Sum == "" {
+			v.errorf(mp+".sum", "histogram metrics require a sum field")
+		}
 	case MetricStateSet:
 		if len(m.Mapping.States) == 0 {
 			v.errorf(mp+".states", "state_set metrics require an explicit state list")
@@ -486,6 +502,9 @@ func validateMapping(v *collector, path string, m *Metric, c *Config) {
 		}
 		if _, conflict := m.Mapping.StaticLabels[stateLabel]; conflict {
 			v.errorf(mp+".static_labels."+stateLabel, "label %q is generated for state_set metrics", stateLabel)
+		}
+		if m.Mapping.Buckets != "" || m.Mapping.Count != "" || m.Mapping.Sum != "" {
+			v.errorf(mp+".buckets", "buckets, count, and sum apply only to histogram metrics")
 		}
 		seenState := map[string]bool{}
 		for i, st := range m.Mapping.States {
@@ -500,7 +519,7 @@ func validateMapping(v *collector, path string, m *Metric, c *Config) {
 	case "":
 		v.errorf(path+".type", "required field is missing")
 	default:
-		v.errorf(path+".type", "unsupported type %q (supported: gauge, counter, state_set)", m.Type)
+		v.errorf(path+".type", "unsupported type %q (supported: gauge, counter, state_set, histogram)", m.Type)
 	}
 
 	if m.Mapping.Value == "" {

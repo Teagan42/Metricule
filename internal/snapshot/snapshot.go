@@ -15,8 +15,9 @@ type Type string
 
 // Wire types emitted in v0.1. Histograms and summaries are deferred (§8.5).
 const (
-	TypeGauge   Type = "gauge"
-	TypeCounter Type = "counter"
+	TypeGauge     Type = "gauge"
+	TypeCounter   Type = "counter"
+	TypeHistogram Type = "histogram"
 )
 
 // Label is one label pair.
@@ -41,7 +42,24 @@ type Family struct {
 	Type Type
 	// Samples must contain no duplicate labelsets; duplicates fail the collection
 	// rather than overwrite each other (§8.3).
+	//
+	// Empty for TypeHistogram; histograms are not flat samples because Prometheus
+	// exposes buckets, sum, and count as one value.
 	Samples []Sample
+	// Histograms holds the series for TypeHistogram. Labels are sorted and unique.
+	Histograms []Histogram
+}
+
+// Histogram is one histogram series built from persisted aggregate buckets.
+//
+// Buckets must be cumulative (`le` semantics), contain +Inf, and Count must equal
+// the +Inf bucket. Values are not derived or cumulated: the source already owns that
+// arithmetic.
+type Histogram struct {
+	Labels  []Label
+	Buckets map[float64]uint64
+	Count   uint64
+	Sum     float64
 }
 
 // Snapshot is the immutable result of one successful collection group.
@@ -60,9 +78,17 @@ type Snapshot struct {
 }
 
 // SampleCount totals published series across families.
+//
+// A histogram series is its buckets plus the generated _sum and _count series.
 func (s *Snapshot) SampleCount() int {
 	n := 0
 	for _, f := range s.Families {
+		if f.Type == TypeHistogram {
+			for _, h := range f.Histograms {
+				n += len(h.Buckets) + 2
+			}
+			continue
+		}
 		n += len(f.Samples)
 	}
 	return n
