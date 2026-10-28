@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Teagan42/Metricule/compare/v0.5.1...v0.6.0) (2026-10-28)
+
+
+### Features
+
+* **mysql:** add the MySQL source adapter ([#36](https://github.com/Teagan42/Metricule/issues/36)) ([d6cf464](https://github.com/Teagan42/Metricule/commit/d6cf4647383264e47a8c9af86b912117dced05c6))
+
 ## [0.5.1](https://github.com/Teagan42/Metricule/compare/v0.5.0...v0.5.1) (2026-10-28)
 
 
