@@ -40,6 +40,7 @@ that boundary in the other direction.
 | `internal/secrets` | Resolve env and file credential references; redact everything |
 | `internal/source` | The adapter contract: `Source`, `WatchableSource`, `Capabilities` |
 | `internal/source/postgres` | SQL querying plus a dedicated `LISTEN` connection |
+| `internal/source/mysql` | Read-only querying (`START TRANSACTION READ ONLY`) |
 | `internal/source/sqlite` | Read-only querying plus `PRAGMA data_version` observation |
 | `internal/source/httpjson` | GET requests plus RFC 9535 selector extraction |
 | `internal/selector` | RFC 9535 JSONPath evaluation |

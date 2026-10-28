@@ -153,6 +153,15 @@ The field promises a bound the driver cannot enforce. Documented rather than fix
 v0.1; a rename to describe the real semantics is queued for M4. `pool.max_open` is
 faithful.
 
+### MySQL: polling only, and multi-statement DSNs are refused
+
+**By design for M5.** MySQL supports querying and polling. Binlog observation,
+`notify`, and managed triggers are not implemented, so `auto` resolves to polling.
+Every collection runs in `START TRANSACTION READ ONLY`; the server rejects writes even
+if a query is misconfigured. A DSN enabling `multiStatements` is rejected at startup,
+because one configured query must not be able to run several statements. TLS and
+timeouts are configured through the DSN.
+
 ### PostgreSQL: managed triggers add write-path work
 
 **By design** (§9.4). Opt-in managed triggers are statement-level and call

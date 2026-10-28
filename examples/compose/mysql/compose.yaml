@@ -1,0 +1,70 @@
+# Production-shaped MySQL stack: MySQL, Metricule with a SELECT-only user, Prometheus.
+#
+# Local credentials are defaults for a self-contained example. Replace every
+# password and use Docker secrets in a real deployment.
+name: metricule-mysql
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${APP_ROOT_PASSWORD:-root-secret}
+      MYSQL_DATABASE: app
+      APP_READER_PASSWORD: ${APP_READER_PASSWORD:-reader-secret}
+    volumes:
+      - ./init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - mysqldata:/var/lib/mysql
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-13306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  metricule:
+    image: ghcr.io/teagan42/metricule:${METRICULE_VERSION:-v0.5.1}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    command: ["serve", "--config", "/etc/metricule/metricule.yaml"]
+    environment:
+      MYSQL_DSN: reader:${APP_READER_PASSWORD:-reader-secret}@tcp(mysql:3306)/app?parseTime=false
+    volumes:
+      - ./metricule.yaml:/etc/metricule/metricule.yaml:ro
+    ports:
+      - "127.0.0.1:9108:9108"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - metricule
+    restart: unless-stopped
+
+volumes:
+  mysqldata:
+  promdata:
