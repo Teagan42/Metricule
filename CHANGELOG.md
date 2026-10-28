@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Teagan42/Metricule/compare/v0.6.0...v0.7.0) (2026-10-28)
+
+
+### Features
+
+* **runtime:** reload configuration on SIGHUP ([#38](https://github.com/Teagan42/Metricule/issues/38)) ([60d1d9b](https://github.com/Teagan42/Metricule/commit/60d1d9b05d3c89fd2d5f856ec719c569cefdb25a))
+
 ## [0.6.0](https://github.com/Teagan42/Metricule/compare/v0.5.1...v0.6.0) (2026-10-28)
 
 
