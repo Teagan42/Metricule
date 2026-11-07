@@ -78,11 +78,17 @@ collect   -> config, source, snapshot, telemetry
 mapping   -> config, snapshot, telemetry
 snapshot  -> (nothing internal)
 exporter  -> config, snapshot, telemetry
-runtime   -> config, source, collect, mapping, snapshot, telemetry, triggers
+runtime   -> config, source, source/*, collect, mapping, snapshot, exporter,
+             telemetry, triggers, version
 triggers  -> (stdlib and pgx only; receives resolved settings)
 cmd       -> config, runtime, source, triggers, version, schemas
 telemetry -> version
 ```
+
+`runtime` is the composition root, so it is the one package allowed to import the
+`source/*` adapters, and it does so only as blank imports for registration
+(`internal/runtime/adapters.go`). Rule 2 below still forbids that edge everywhere
+else.
 
 Three rules make this checkable:
 

@@ -7,10 +7,11 @@ Several entries are deliberate design limits rather than unfinished work; those 
 marked **by design** and will not change. Where a limitation has a planned fix, the
 milestone is named.
 
-> **Status.** Describes the M1 release plus M2 change-aware refresh and M3 managed
-> triggers. Collection works end to end, PostgreSQL plans can use `LISTEN/NOTIFY`
-> (with optional managed triggers), and SQLite `auto` plans react to
-> `PRAGMA data_version`.
+> **Status.** Current as of v0.9.0, which is complete through M4. Collection works end
+> to end across all four adapters, PostgreSQL plans can use `LISTEN/NOTIFY` (with
+> optional managed triggers), and SQLite `auto` plans react to `PRAGMA data_version`.
+> Also covers the shipped M5 work: the MySQL adapter, `SIGHUP` reload, histograms from
+> persisted cumulative buckets, and `api_key` authentication.
 
 ## Observability semantics
 
@@ -156,9 +157,9 @@ no maximum-idle setting. `pool.max_idle` is therefore a steady-state target rath
 an enforced cap: a burst can leave more idle connections than configured until reaping
 clears them, typically within a minute.
 
-The field promises a bound the driver cannot enforce. Documented rather than fixed for
-v0.1; a rename to describe the real semantics is queued for M4. `pool.max_open` is
-faithful.
+The field promises a bound the driver cannot enforce. Documented rather than renamed:
+the name is part of the `v1alpha1` contract, and renaming it would break every existing
+configuration to fix wording. Revisit at 1.0. `pool.max_open` is faithful.
 
 ### MySQL: polling only, and multi-statement DSNs are refused
 

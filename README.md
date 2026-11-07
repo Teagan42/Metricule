@@ -10,11 +10,11 @@ monitored.
 The name is a play on *metric* and *molecule*: small units of application state
 assembled into meaningful observability.
 
-> **Status: pre-release (M0).** The configuration contract, validation, CLI surface,
-> JSON Schema, and telemetry families are implemented and tested. The collection
-> engine and the source adapters are not. `metricule validate` works today;
-> `metricule serve` exits with an explanation rather than serving an empty
-> `/metrics`. See [implementation status](#implementation-status).
+> **Status: pre-1.0 (v0.9.0).** Functionally complete through M4, with all four source
+> adapters, change-driven refresh, managed triggers, and the release pipeline in place.
+> `apiVersion` is still `v1alpha1`: the configuration contract may change before 1.0,
+> and changes are recorded in [`CHANGELOG.md`](CHANGELOG.md). See
+> [implementation status](#implementation-status).
 
 ## Why
 
@@ -38,6 +38,7 @@ Metricule reads it from there.
 
 ```text
 PostgreSQL ─┐
+MySQL      ─┤
 SQLite     ─┼─> collection engine ─> mapping ─> snapshot ─> /metrics ─> Prometheus
 HTTP/JSON  ─┘      (own schedule)                (in memory)
 ```
@@ -155,6 +156,7 @@ Metricule a read-only database role.
 | `metricule validate --config PATH` | Validate offline; connects to nothing |
 | `metricule validate --config PATH --online` | Also check source reachability |
 | `metricule test --config PATH --metric NAME` | Run one collection and print the result |
+| `metricule triggers plan\|apply\|status\|remove --config PATH` | Manage opt-in PostgreSQL notification triggers ([details](docs/triggers.md)) |
 | `metricule config schema` | Print the configuration JSON Schema |
 | `metricule version` | Print build information |
 
@@ -165,18 +167,22 @@ Exit codes: `0` success, `1` runtime failure, `2` usage error.
 | Milestone | Scope | Status |
 |---|---|---|
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
-| M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
+| M1 | Three adapters, gauge mapping, polling, exposition | Complete |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
 | M3 | Managed PostgreSQL triggers | Complete |
 | M4 | Failure injection, benchmarks, release hardening | Complete |
+| M5 | Future event semantics | Partial — MySQL adapter, `SIGHUP` reload, persisted-bucket histograms, and `api_key` authentication are shipped; the rest is deferred |
 
-M1 is the minimum viable release.
+M1 was the minimum viable release.
 
 ## Documentation
 
+- [Configuration reference](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Architecture decisions](docs/adr/)
+- [Writing a source adapter](docs/adapter-development.md)
 - [Production Compose examples](examples/compose/postgres/README.md)
+- [Sonarr](examples/sonarr/README.md) and [Radarr](examples/radarr/README.md) — replacing Varken
 - [Managed triggers](docs/triggers.md)
 - [Performance measurements](docs/performance.md)
 - [Release readiness](docs/release-readiness.md)
@@ -194,7 +200,10 @@ make build            # bin/metricule
 make docker           # container image
 ```
 
-Go 1.27 or newer. CGO is disabled by default; the SQLite driver is pure Go.
+Go 1.27 or newer. `go.mod` carries `toolchain go1.27.3`, which patches 14 stdlib
+advisories reachable from the exporter and the HTTP adapter; the default
+`GOTOOLCHAIN=auto` fetches it on first build. CGO is disabled by default — the SQLite
+driver is pure Go — so only `make test-race` needs a C toolchain.
 
 ## Scope
 

@@ -52,8 +52,9 @@ An adapter is only reachable if something imports it, since registration happens
 there or it will never load — `source.Implemented(type)` stays false and `serve`
 reports the adapter as absent from the build.
 
-> Those blank imports land with the `internal/runtime` wiring. Until then no adapter is
-> linked into the binary, which is why `metricule serve` cannot yet collect.
+The blank imports live in [`internal/runtime/adapters.go`](../internal/runtime/adapters.go).
+Adding an adapter package without adding it there is the one mistake that produces a
+passing test suite and a useless program.
 
 ## Settings
 
