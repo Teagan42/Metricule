@@ -1,0 +1,277 @@
+# Radarr: a Varken replacement built on the HTTP/JSON adapter.
+#
+# Radarr rejects Authorization, so the key rides X-Api-Key (type: api_key).
+#
+# Varken counted missing movies by fetching the whole library and filtering it
+# client-side. /api/v3/wanted/missing answers the same question server-side, so
+# `pageSize: "1"` is enough: only `totalRecords` is read.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: radarr
+  description: Radarr queue, wanted, health, calendar, and disk metrics
+
+server:
+  listen: "0.0.0.0:9710"
+
+defaults:
+  collection:
+    interval: 60s
+    timeout: 15s
+    jitter: 5s
+  limits:
+    max_series_per_metric: 500
+    max_rows_per_query: 2000
+
+sources:
+  radarr:
+    type: http
+    base_url: http://radarr:7878
+    timeout: 15s
+    authentication:
+      type: api_key
+      header: X-Api-Key
+      token:
+        env: RADARR_API_KEY
+    allowed_paths:
+      - /api/v3/queue
+      - /api/v3/queue/status
+      - /api/v3/wanted/missing
+      - /api/v3/wanted/cutoff
+      - /api/v3/health
+      - /api/v3/diskspace
+      - /api/v3/calendar
+    max_response_bytes: 8388608
+    # A redirect would carry X-Api-Key to another origin.
+    max_redirects: 0
+    retries: 2
+
+metrics:
+  # --- Queue totals ---------------------------------------------------------
+
+  - name: radarr_queue_items
+    help: Items in the Radarr download queue, including unknown-movie items
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/queue/status
+    mapping:
+      value: "$.totalCount"
+    collect:
+      mode: poll
+      interval: 60s
+
+  - name: radarr_queue_items_unknown
+    help: Queue items Radarr cannot match to a movie
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/queue/status
+    mapping:
+      value: "$.unknownCount"
+    collect:
+      mode: poll
+      interval: 60s
+
+  # Radarr reports these as booleans, not counts; they map to 0 or 1.
+  - name: radarr_queue_errored
+    help: Whether any queue item is in an error state
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/queue/status
+    mapping:
+      value: "$.errors"
+    collect:
+      mode: poll
+      interval: 60s
+
+  - name: radarr_queue_warned
+    help: Whether any queue item is in a warning state
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/queue/status
+    mapping:
+      value: "$.warnings"
+    collect:
+      mode: poll
+      interval: 60s
+
+  # --- Wanted ---------------------------------------------------------------
+
+  - name: radarr_wanted_missing_movies
+    help: Monitored movies that are released and have no file
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/wanted/missing
+      params:
+        pageSize: "1"
+    mapping:
+      value: "$.totalRecords"
+    collect:
+      mode: poll
+      interval: 5m
+
+  - name: radarr_wanted_cutoff_unmet_movies
+    help: Monitored movies whose quality cutoff is unmet
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/wanted/cutoff
+      params:
+        pageSize: "1"
+    mapping:
+      value: "$.totalRecords"
+    collect:
+      mode: poll
+      interval: 5m
+
+  # --- Per-item queue detail ------------------------------------------------
+  #
+  # One series per queue item, replacing Varken's per-item points. Label
+  # cardinality follows queue depth, so max_series_per_metric caps it; drop
+  # these two metrics if you only alert on the totals above.
+  #
+  # includeUnknownMovieItems is false because a label selector must resolve on
+  # every row: an unknown-movie item has `"movie": null`, and `null: omit`
+  # covers the value only, so one such item fails the whole collection.
+  # radarr_queue_items_unknown counts them instead.
+
+  - name: radarr_queue_item_size_bytes
+    help: Total size of a queued Radarr download
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/queue
+      params:
+        pageSize: "200"
+        includeMovie: "true"
+        includeUnknownMovieItems: "false"
+    mapping:
+      rows: "$.records[*]"
+      value: "$.size"
+      labels:
+        movie: "$.movie.title"
+        title_slug: "$.movie.titleSlug"
+        release: "$.title"
+        protocol: "$.protocol"
+        quality: "$.quality.quality.name"
+        status: "$.status"
+        tracked_status: "$.trackedDownloadStatus"
+        tracked_state: "$.trackedDownloadState"
+    collect:
+      mode: poll
+      interval: 60s
+    limits:
+      max_series_per_metric: 200
+
+  - name: radarr_queue_item_remaining_bytes
+    help: Bytes still to download for a queued Radarr item
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/queue
+      params:
+        pageSize: "200"
+        includeMovie: "true"
+        includeUnknownMovieItems: "false"
+    mapping:
+      rows: "$.records[*]"
+      value: "$.sizeleft"
+      labels:
+        movie: "$.movie.title"
+        release: "$.title"
+        protocol: "$.protocol"
+        quality: "$.quality.quality.name"
+    collect:
+      mode: poll
+      interval: 60s
+    limits:
+      max_series_per_metric: 200
+
+  # --- Calendar -------------------------------------------------------------
+  #
+  # Radarr defaults the window to today when start and end are omitted, which
+  # `params` cannot compute: static values only, so no relative date range is
+  # expressible.
+
+  - name: radarr_calendar_movie_has_file
+    help: Whether a movie in today's calendar window has a file on disk
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/calendar
+      params:
+        unmonitored: "false"
+    mapping:
+      rows: "$[*]"
+      value: "$.hasFile"
+      labels:
+        movie: "$.title"
+        year: "$.year"
+    collect:
+      mode: poll
+      interval: 10m
+    limits:
+      max_series_per_metric: 300
+
+  # --- Health and disk ------------------------------------------------------
+
+  - name: radarr_health_issue
+    help: Severity of each active Radarr health check result
+    type: state_set
+    source: radarr
+    request:
+      path: /api/v3/health
+    mapping:
+      rows: "$[*]"
+      value: "$.type"
+      labels:
+        check: "$.source"
+      states:
+        - ok
+        - notice
+        - warning
+        - error
+    collect:
+      mode: poll
+      interval: 5m
+    limits:
+      max_series_per_metric: 200
+
+  - name: radarr_disk_free_bytes
+    help: Free space on a root folder Radarr reports
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/diskspace
+    mapping:
+      rows: "$[*]"
+      value: "$.freeSpace"
+      labels:
+        path: "$.path"
+    collect:
+      mode: poll
+      interval: 5m
+    limits:
+      max_series_per_metric: 50
+
+  - name: radarr_disk_total_bytes
+    help: Total size of a root folder Radarr reports
+    type: gauge
+    source: radarr
+    request:
+      path: /api/v3/diskspace
+    mapping:
+      rows: "$[*]"
+      value: "$.totalSpace"
+      labels:
+        path: "$.path"
+    collect:
+      mode: poll
+      interval: 5m
+    limits:
+      max_series_per_metric: 50

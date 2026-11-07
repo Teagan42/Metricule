@@ -183,6 +183,21 @@ On an extremely write-heavy table, polling may be cheaper than the trigger. See
 token refresh, or XML. Cross-origin redirects are always refused, regardless of
 `max_redirects`.
 
+### HTTP: request parameters are static, and there is no pagination
+
+`request.params` and `request.headers` hold literal strings. Nothing is templated, so
+a parameter cannot be computed at collection time. A relative date window — the
+`start=<today - 7d>&end=<today>` form that calendar and report endpoints usually want
+— is therefore not expressible.
+
+Each collection issues exactly one request. An endpoint that pages its results yields
+only the first page, bounded by whatever `pageSize` the configuration passes. Prefer an
+endpoint that reports a server-side total: reading `$.totalRecords` with `pageSize=1`
+is both correct and cheap, whereas counting a paged collection is not possible at all,
+because selectors extract values and never aggregate.
+
+See [`examples/sonarr`](../examples/sonarr/README.md) for both limits in practice.
+
 ## Configuration
 
 ### Offline validation does not resolve secrets
@@ -207,6 +222,21 @@ before publication; `max_total_series` is enforced by the snapshot store, since 
 sees the global published total. Both fail the affected collection atomically —
 truncation is never silent (§8.7) — but a single oversized collection and a global
 budget breach are reported through different telemetry.
+
+### `null: omit` governs the value, not labels
+
+The null policy decides what happens to a sample whose *value* is null. A **label**
+selector that does not resolve on a row is a `missing_field` failure, and it fails the
+whole collection, not just that row.
+
+This matters for any array where some elements have a different shape. A Sonarr queue
+holding one unknown-series item — `"series": null` — makes every series in that metric
+disappear, not only the unmatched one. Either narrow the request so the rows are
+uniform (as [`examples/sonarr`](../examples/sonarr/README.md) does with
+`includeUnknownSeriesItems: "false"`) or label only fields that are always present.
+
+The strictness is deliberate: a label silently defaulting to empty would merge
+unrelated rows into one series, which is worse than a visible failure (P3, P6).
 
 ### Presence tracking does not follow YAML merge keys
 
