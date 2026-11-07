@@ -2,6 +2,11 @@ module github.com/teagan42/metricule
 
 go 1.27.0
 
+// Go 1.27.0 and 1.27.1 carry 14 stdlib advisories that govulncheck reports as
+// reachable from the exporter and the HTTP adapter. CI and the release image float
+// to the latest 1.27.x, so this floors a local build to the same patched toolchain.
+toolchain go1.27.3
+
 require (
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.11.0
