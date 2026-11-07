@@ -1281,7 +1281,77 @@ metrics:
       type: mtls
 `, httpGauge),
 			path: "sources.api.authentication.type",
-			want: `unsupported type "mtls" (supported: bearer, basic)`,
+			want: `unsupported type "mtls" (supported: bearer, basic, api_key)`,
+		},
+		{
+			name: "api_key_without_header",
+			rule: "missing authentication references",
+			doc: httpDoc(`    authentication:
+      type: api_key
+      token:
+        env: APP_TOKEN
+`, httpGauge),
+			path: "sources.api.authentication.header",
+			want: "required for api_key authentication",
+		},
+		{
+			name: "api_key_without_token",
+			rule: "missing authentication references",
+			doc: httpDoc(`    authentication:
+      type: api_key
+      header: X-Api-Key
+`, httpGauge),
+			path: "sources.api.authentication.token",
+			want: "secret reference is empty: set one of value, env, or file",
+		},
+		{
+			name: "api_key_header_malformed",
+			rule: "missing authentication references",
+			doc: httpDoc(`    authentication:
+      type: api_key
+      header: "X Api Key"
+      token:
+        env: APP_TOKEN
+`, httpGauge),
+			path: "sources.api.authentication.header",
+			want: `"X Api Key" is not a valid HTTP header name`,
+		},
+		{
+			name: "api_key_header_authorization",
+			rule: "missing authentication references",
+			doc: httpDoc(`    authentication:
+      type: api_key
+      header: authorization
+      token:
+        env: APP_TOKEN
+`, httpGauge),
+			path: "sources.api.authentication.header",
+			want: "use type bearer or basic instead of an Authorization api_key",
+		},
+		{
+			name: "api_key_with_basic_fields",
+			rule: "missing authentication references",
+			doc: httpDoc(`    authentication:
+      type: api_key
+      header: X-Api-Key
+      token:
+        env: APP_TOKEN
+      username: metrics
+`, httpGauge),
+			path: "sources.api.authentication",
+			want: "api_key authentication does not use username or password",
+		},
+		{
+			name: "bearer_with_api_key_header",
+			rule: "missing authentication references",
+			doc: httpDoc(`    authentication:
+      type: bearer
+      header: X-Api-Key
+      token:
+        env: APP_TOKEN
+`, httpGauge),
+			path: "sources.api.authentication.header",
+			want: "header applies only to api_key authentication",
 		},
 		{
 			name: "bearer_with_basic_fields",

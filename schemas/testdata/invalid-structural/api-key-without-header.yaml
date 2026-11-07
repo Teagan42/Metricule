@@ -1,0 +1,23 @@
+# api_key authentication cannot place the key without a header name.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: http://app:8080
+    authentication:
+      type: api_key
+      token:
+        env: APP_API_KEY
+metrics:
+  - name: app_thing
+    help: A thing
+    type: gauge
+    source: api
+    request:
+      path: /status
+    mapping:
+      value: "$.value"
+    collect:
+      mode: poll
+      interval: 30s

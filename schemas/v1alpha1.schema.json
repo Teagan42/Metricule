@@ -258,6 +258,21 @@
             "username": { "type": "string", "minLength": 1 },
             "password": { "$ref": "#/$defs/secretRef" }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "header", "token"],
+          "properties": {
+            "type": { "const": "api_key" },
+            "header": {
+              "type": "string",
+              "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$",
+              "not": { "pattern": "^[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]$" },
+              "description": "Header carrying the key, for APIs that reject Authorization. Sonarr and Radarr use X-Api-Key."
+            },
+            "token": { "$ref": "#/$defs/secretRef" }
+          }
         }
       ]
     },

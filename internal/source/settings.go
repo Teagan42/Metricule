@@ -45,13 +45,15 @@ type HTTPSettings struct {
 	Timeout time.Duration
 	Headers map[string]string
 
-	// AuthType is "", "bearer", or "basic".
+	// AuthType is "", "bearer", "basic", or "api_key".
 	AuthType string
-	// Token is resolved bearer credential material. Never log.
+	// Token is resolved bearer or api_key credential material. Never log.
 	Token    string
 	Username string
 	// Password is resolved basic credential material. Never log.
 	Password string
+	// APIKeyHeader names the header carrying Token when AuthType is "api_key".
+	APIKeyHeader string
 
 	// AllowedPaths restricts request paths. Empty permits any path under BaseURL.
 	AllowedPaths     []string

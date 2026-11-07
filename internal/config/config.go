@@ -334,14 +334,20 @@ type AuthType string
 const (
 	AuthBearer AuthType = "bearer"
 	AuthBasic  AuthType = "basic"
+	// AuthAPIKey sends the credential in a caller-named header. Required by APIs
+	// that reject Authorization, such as Sonarr and Radarr (X-Api-Key).
+	AuthAPIKey AuthType = "api_key"
 )
 
 // Authentication configures outbound HTTP credentials.
 type Authentication struct {
 	Type AuthType `yaml:"type"`
-	// Token is required for bearer authentication.
+	// Token is required for bearer and api_key authentication.
 	Token secrets.Ref `yaml:"token,omitempty"`
 	// Username and Password are required for basic authentication.
 	Username string      `yaml:"username,omitempty"`
 	Password secrets.Ref `yaml:"password,omitempty"`
+	// Header names the api_key carrier. Required, because guessing a credential
+	// header wrong leaks it to an upstream that did not expect it.
+	Header string `yaml:"header,omitempty"`
 }

@@ -18,6 +18,8 @@ import (
 var (
 	metricNameRe = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 	labelNameRe  = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	// RFC 9110 field-name token. Stops a header name smuggling CR, LF, or a colon.
+	headerNameRe = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
 )
 
 // TelemetryPrefix is reserved for Metricule's own metric families (§13).
@@ -268,6 +270,9 @@ func validateHTTP(v *collector, path string, h *HTTPSource) {
 			if a.Username != "" || !a.Password.IsZero() {
 				v.errorf(path+".authentication", "bearer authentication does not use username or password")
 			}
+			if a.Header != "" {
+				v.errorf(path+".authentication.header", "header applies only to api_key authentication")
+			}
 		case AuthBasic:
 			if a.Username == "" {
 				v.errorf(path+".authentication.username", "required for basic authentication")
@@ -278,10 +283,21 @@ func validateHTTP(v *collector, path string, h *HTTPSource) {
 			if !a.Token.IsZero() {
 				v.errorf(path+".authentication", "basic authentication does not use token")
 			}
+			if a.Header != "" {
+				v.errorf(path+".authentication.header", "header applies only to api_key authentication")
+			}
+		case AuthAPIKey:
+			if err := a.Token.Validate(); err != nil {
+				v.errorf(path+".authentication.token", "%s", err)
+			}
+			if a.Username != "" || !a.Password.IsZero() {
+				v.errorf(path+".authentication", "api_key authentication does not use username or password")
+			}
+			validateAPIKeyHeader(v, path+".authentication.header", a.Header)
 		case "":
 			v.errorf(path+".authentication.type", "required field is missing")
 		default:
-			v.errorf(path+".authentication.type", "unsupported type %q (supported: bearer, basic)", a.Type)
+			v.errorf(path+".authentication.type", "unsupported type %q (supported: bearer, basic, api_key)", a.Type)
 		}
 	}
 }
@@ -640,6 +656,21 @@ func validateCollect(v *collector, path string, m *Metric) {
 				v.errorf(fmt.Sprintf("%s.watch.tables[%d]", cp, i), "table must not be empty")
 			}
 		}
+	}
+}
+
+// Rejects an api_key header name that is empty, malformed, or Authorization.
+//
+// Authorization is excluded because the adapter owns it for bearer and basic; routing
+// a key through it here would silently shadow those schemes.
+func validateAPIKeyHeader(v *collector, path, name string) {
+	switch {
+	case name == "":
+		v.errorf(path, "required for api_key authentication")
+	case !headerNameRe.MatchString(name):
+		v.errorf(path, "%q is not a valid HTTP header name", name)
+	case http.CanonicalHeaderKey(name) == "Authorization":
+		v.errorf(path, "use type bearer or basic instead of an Authorization api_key")
 	}
 }
 
