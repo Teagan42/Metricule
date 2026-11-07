@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/Teagan42/Metricule/compare/v0.8.0...v0.9.0) (2026-11-07)
+
+
+### Features
+
+* **source/httpjson:** authenticate with an API key header and replace Varken for Sonarr and Radarr ([#42](https://github.com/Teagan42/Metricule/issues/42)) ([802b525](https://github.com/Teagan42/Metricule/commit/802b525bcf76db06b3c9832154bed11e61ba04ea))
+
+
+### Bug Fixes
+
+* **ci:** floor the local toolchain at the patched Go 1.27.3 ([#43](https://github.com/Teagan42/Metricule/issues/43)) ([1685aa0](https://github.com/Teagan42/Metricule/commit/1685aa0782abdbb84c5f97a0716c9f78a8f20531))
+
 ## [0.8.0](https://github.com/Teagan42/Metricule/compare/v0.7.0...v0.8.0) (2026-10-28)
 
 
