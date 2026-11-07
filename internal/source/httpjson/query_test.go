@@ -14,7 +14,7 @@ import (
 	"github.com/teagan42/metricule/internal/source"
 )
 
-// §20.4.3 — bearer and basic credentials reach the upstream in the right header.
+// §20.4.3 — bearer, basic, and api_key credentials reach the upstream in the right header.
 func TestAuthentication(t *testing.T) {
 	t.Parallel()
 
@@ -50,6 +50,60 @@ func TestAuthentication(t *testing.T) {
 
 		if !ok || gotUser != "scraper" || gotPass != "s3cr3t-password" {
 			t.Fatalf("BasicAuth = %q/%q ok=%v", gotUser, gotPass, ok)
+		}
+	})
+
+	// Sonarr and Radarr reject Authorization, so the key must ride a named header.
+	t.Run("api_key", func(t *testing.T) {
+		t.Parallel()
+		var got, gotAuth string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got, gotAuth = r.Header.Get("X-Api-Key"), r.Header.Get("Authorization")
+			_, _ = w.Write([]byte(`{"v":1}`))
+		}))
+		defer srv.Close()
+
+		s := newSource(t, source.HTTPSettings{
+			BaseURL: srv.URL, AuthType: "api_key", APIKeyHeader: "X-Api-Key", Token: "s3cr3t-key",
+		})
+		query(t, s, compile(t, s, source.QueryDefinition{Value: "$.v"}), 10)
+
+		if got != "s3cr3t-key" {
+			t.Fatalf("X-Api-Key = %q", got)
+		}
+		if gotAuth != "" {
+			t.Fatalf("api_key must not set Authorization, got %q", gotAuth)
+		}
+	})
+
+	// A static header of the same name must not win over the resolved credential.
+	t.Run("api_key overrides a static header", func(t *testing.T) {
+		t.Parallel()
+		var got string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Get("X-Api-Key")
+			_, _ = w.Write([]byte(`{"v":1}`))
+		}))
+		defer srv.Close()
+
+		s := newSource(t, source.HTTPSettings{
+			BaseURL: srv.URL, AuthType: "api_key", APIKeyHeader: "X-Api-Key", Token: "resolved",
+			Headers: map[string]string{"X-Api-Key": "stale"},
+		})
+		query(t, s, compile(t, s, source.QueryDefinition{Value: "$.v"}), 10)
+
+		if got != "resolved" {
+			t.Fatalf("X-Api-Key = %q, want the authentication block to win", got)
+		}
+	})
+
+	t.Run("api_key without a header", func(t *testing.T) {
+		t.Parallel()
+		srv := jsonServer(t, `{"v":1}`)
+		s := newSource(t, source.HTTPSettings{BaseURL: srv.URL, AuthType: "api_key", Token: "k"})
+		err := queryErr(t, s, compile(t, s, source.QueryDefinition{Value: "$.v"}), 10)
+		if err == nil || !strings.Contains(err.Error(), "no header configured") {
+			t.Fatalf("error = %v", err)
 		}
 	})
 

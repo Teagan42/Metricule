@@ -252,13 +252,33 @@ fetcher driven by its own config file.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `type` | enum | yes | — | `bearer` or `basic`. |
-| `token` | secret ref | for `bearer` | — | Sent as `Authorization: Bearer`. Rejected for `basic`. |
-| `username` | string | for `basic` | — | Rejected for `bearer`. |
-| `password` | secret ref | for `basic` | — | Rejected for `bearer`. |
+| `type` | enum | yes | — | `bearer`, `basic`, or `api_key`. |
+| `token` | secret ref | for `bearer`, `api_key` | — | Sent as `Authorization: Bearer`, or in `header`. Rejected for `basic`. |
+| `username` | string | for `basic` | — | Rejected for `bearer` and `api_key`. |
+| `password` | secret ref | for `basic` | — | Rejected for `bearer` and `api_key`. |
+| `header` | string | for `api_key` | — | Header carrying `token`. Rejected for `bearer` and `basic`. |
 
 Only GET is supported in v0.1, so there is no request body to sign and no OAuth2 refresh
 flow.
+
+`api_key` exists for APIs that reject `Authorization` and require a named header.
+Sonarr and Radarr are the common case:
+
+```yaml
+authentication:
+  type: api_key
+  header: X-Api-Key
+  token:
+    env: SONARR_API_KEY
+```
+
+`header` must be a valid HTTP field name and must not be `Authorization`; use `bearer`
+or `basic` for that. The resolved credential is applied after static headers, so a
+`headers` entry of the same name cannot shadow it.
+
+A key can also be passed as a query parameter through `request.params`, but that puts
+it in request URLs, and `params` holds plain strings rather than secret references.
+Prefer `api_key`.
 
 ## Metrics
 
@@ -495,7 +515,7 @@ Detected classes (§5.5):
 | Naming | invalid metric and label names, the `metricule_` prefix, `_bucket` and `_sum` suffixes, the `__` label prefix, the generated `state` label |
 | Collection | unsupported or reserved modes, `notify` without a channel, `auto` without a channel on a notifying source, `channel` or `watch` in the wrong mode, `require_notifications` outside `notify`/`auto`, unsupported watch events, negative durations |
 | Adapter capability | `notify` on a source type that does not support it, a `query` block on an HTTP source, a `request` block on a SQL source, a non-GET method |
-| Credentials | empty or ambiguous secret references, `bearer` without a token, `basic` without a username or password, mismatched authentication fields |
+| Credentials | empty or ambiguous secret references, `bearer` without a token, `basic` without a username or password, `api_key` without a token or header, an `api_key` header that is malformed or `Authorization`, mismatched authentication fields |
 | Selectors | malformed JSONPath in `value`, `rows`, or `labels` |
 | Limits | non-positive limits, `max_series_per_metric` above `max_total_series`, more metrics than `max_metrics`, an idle pool above the open pool |
 
@@ -521,6 +541,8 @@ Validated in CI by `make validate-examples`, which runs `metricule validate` ove
 | [`examples/http/metricule.yaml`](../examples/http/metricule.yaml) | Bearer authentication, a path allow-list, array extraction, unit scaling, `state_set` |
 | [`examples/mysql/metricule.yaml`](../examples/mysql/metricule.yaml) | MySQL connection, aggregate and grouped metrics, polling |
 | [`examples/histogram/metricule.yaml`](../examples/histogram/metricule.yaml) | Persisted cumulative buckets exposed as a Prometheus histogram |
+| [`examples/sonarr/metricule.yaml`](../examples/sonarr/metricule.yaml) | `api_key` authentication, nested selectors, a Varken replacement ([notes](../examples/sonarr/README.md)) |
+| [`examples/radarr/metricule.yaml`](../examples/radarr/metricule.yaml) | `api_key` authentication, nested selectors, a Varken replacement ([notes](../examples/radarr/README.md)) |
 
 `schemas/testdata/` holds the fixtures behind the schema parity tests, split into
 `valid`, `invalid-structural`, and `invalid-semantic`.

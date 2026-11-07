@@ -114,6 +114,12 @@ func translateHTTP(name string, h *config.HTTPSource) (any, error) {
 				return nil, fmt.Errorf("source %q: authentication.password: %w", name, err)
 			}
 			s.Username, s.Password = a.Username, password
+		case config.AuthAPIKey:
+			token, err := a.Token.Resolve()
+			if err != nil {
+				return nil, fmt.Errorf("source %q: authentication.token: %w", name, err)
+			}
+			s.Token, s.APIKeyHeader = token, a.Header
 		}
 	}
 	return s, nil

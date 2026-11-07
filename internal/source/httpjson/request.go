@@ -159,6 +159,11 @@ func (s *Source) newRequest(ctx context.Context, spec *querySpec) (*http.Request
 		req.Header.Set(authorizationHeader, "Bearer "+s.settings.Token)
 	case authBasic:
 		req.SetBasicAuth(s.settings.Username, s.settings.Password)
+	case authAPIKey:
+		if s.settings.APIKeyHeader == "" {
+			return nil, fmt.Errorf("source %q: api_key authentication has no header configured", s.id)
+		}
+		req.Header.Set(s.settings.APIKeyHeader, s.settings.Token)
 	default:
 		return nil, fmt.Errorf("source %q: unsupported authentication type %q", s.id, s.settings.AuthType)
 	}
@@ -169,6 +174,7 @@ func (s *Source) newRequest(ctx context.Context, spec *querySpec) (*http.Request
 const (
 	authBearer = "bearer"
 	authBasic  = "basic"
+	authAPIKey = "api_key"
 )
 
 // Allows a trailing slash, which path.Clean strips but a server may distinguish.

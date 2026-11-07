@@ -1,0 +1,26 @@
+# api_key authentication for upstreams that reject Authorization (Sonarr, Radarr).
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+sources:
+  api:
+    type: http
+    base_url: http://sonarr:8989
+    authentication:
+      type: api_key
+      header: X-Api-Key
+      token:
+        env: SONARR_API_KEY
+    allowed_paths:
+      - /api/v3/queue/status
+metrics:
+  - name: sonarr_queue_items
+    help: Items in the download queue
+    type: gauge
+    source: api
+    request:
+      path: /api/v3/queue/status
+    mapping:
+      value: "$.totalCount"
+    collect:
+      mode: poll
+      interval: 30s
