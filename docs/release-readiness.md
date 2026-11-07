@@ -32,6 +32,7 @@ pass/fail gate on shared runners.
 | M2 | Notifications, change tokens, debouncing, reconciliation | `#23` supervisor, `#25` SQLite `data_version`, `#26` PostgreSQL `LISTEN`; outage and notification tests in `tests/integration` |
 | M3 | Opt-in managed PostgreSQL triggers | `#29`; apply/status/remove, idempotency, foreign-object refusal, runtime startup/cleanup tests |
 | M4 | Failure injection, security, telemetry, packaging, benchmarks, docs | outage and slow-collection tests (`#32`), benchmark harness (`#31`), Compose stacks (`#33`), secrets redaction tests, [`performance.md`](performance.md) |
+| M5 (partial) | Shipped ahead of the deferred M5 list | `#36` MySQL adapter, `#38` `SIGHUP` reload, `#40` persisted-bucket histograms, `#42` `api_key` authentication with Sonarr and Radarr examples |
 
 ## Release acceptance checklist
 
@@ -78,6 +79,11 @@ Adapted from the implementation handoff, with the artifact or test that satisfie
 - Credentials resolve in `internal/runtime` only. Adapters, logs, errors, diagnostics,
   and configuration dumps never render a secret; `secrets.RedactDSN` covers URL,
   query, and key-value DSNs.
+- HTTP credentials travel only through the `authentication` block, never through static
+  `headers`: an `Authorization` header in configuration is refused, `api_key` is applied
+  after static headers so a same-named entry cannot shadow it, and its `header` may not
+  be `Authorization`. Supplying a key via `request.params` would place it in request
+  URLs and is documented against.
 - Paths, methods, redirect origins, response sizes, rows, series, and concurrency are
   bounded by configuration.
 
