@@ -1,0 +1,245 @@
+# Sonarr: library metrics read from Sonarr's PostgreSQL database and refreshed
+# by managed LISTEN/NOTIFY triggers instead of polling the API.
+#
+# Sonarr v4 keeps its library in PostgreSQL when configured to. Its tables use
+# quoted PascalCase identifiers, so every name below is double-quoted in SQL.
+# The download queue, health checks, and disk space live in Sonarr's memory,
+# not the database; use examples/sonarr for those.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: sonarr-postgres
+  description: Sonarr library, wanted, history, and blocklist metrics from PostgreSQL
+
+server:
+  listen: "0.0.0.0:9711"
+
+defaults:
+  collection:
+    interval: 60s
+    timeout: 10s
+    # Series refreshes rewrite episodes one statement at a time; collapse the burst.
+    debounce: 2s
+    reconcile_interval: 5m
+  limits:
+    max_series_per_metric: 200
+    max_rows_per_query: 1000
+    max_concurrent_collections: 2
+  failure:
+    mode: retain
+    max_stale_age: 15m
+
+sources:
+  sonarr:
+    type: postgres
+    # A SELECT-only role on the sonarr-main database.
+    dsn:
+      env: SONARR_DATABASE_URL
+    pool:
+      max_open: 2
+      max_idle: 1
+    query_timeout: 10s
+    triggers:
+      manage: true
+      schema: metricule
+      cleanup_on_shutdown: false
+      # Sonarr's own database user owns the tables, so only it can add triggers.
+      dsn:
+        env: SONARR_ADMIN_DATABASE_URL
+
+# Every metric shares one channel. Metricule installs one statement-level
+# trigger per watched table, and the payload names the table, so a write
+# refreshes only the metrics that watch it.
+metrics:
+  - name: sonarr_series
+    help: Series in the Sonarr library by status and monitoring
+    type: gauge
+    source: sonarr
+    query:
+      sql: |
+        SELECT
+          CASE "Status"
+            WHEN 0 THEN 'continuing'
+            WHEN 1 THEN 'ended'
+            WHEN 2 THEN 'upcoming'
+            WHEN -1 THEN 'deleted'
+            ELSE 'unknown'
+          END AS status,
+          CASE WHEN "Monitored" THEN 'true' ELSE 'false' END AS monitored,
+          COUNT(*) AS value
+        FROM "Series"
+        GROUP BY 1, 2
+    mapping:
+      value: value
+      labels:
+        status: status
+        monitored: monitored
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.Series
+
+  # Mirrors Sonarr's Wanted → Missing view: monitored, aired, no file, and not
+  # a special. Airing is time-driven, so fallback_interval picks up episodes
+  # that cross their air date without a write.
+  - name: sonarr_wanted_missing_episodes
+    help: Monitored episodes that have aired and have no file
+    type: gauge
+    source: sonarr
+    query:
+      sql: |
+        SELECT COUNT(*) AS value
+        FROM "Episodes" e
+        JOIN "Series" s ON s."Id" = e."SeriesId"
+        WHERE e."Monitored"
+          AND s."Monitored"
+          AND e."EpisodeFileId" = 0
+          AND e."SeasonNumber" > 0
+          AND e."AirDateUtc" <= (now() AT TIME ZONE 'UTC')
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 5m
+      watch:
+        tables:
+          - public.Episodes
+          - public.Series
+
+  # Quality is a JSON document whose "quality" key is a QualityDefinitions id.
+  # Quality titles are a fixed set, so the label stays bounded.
+  - name: sonarr_episode_files
+    help: Episode files on disk by quality
+    type: gauge
+    source: sonarr
+    query:
+      sql: |
+        SELECT COALESCE(q."Title", 'unknown') AS quality, COUNT(*) AS value
+        FROM "EpisodeFiles" f
+        LEFT JOIN "QualityDefinitions" q
+          ON q."Quality" = (f."Quality"::json ->> 'quality')::int
+        GROUP BY 1
+    mapping:
+      value: value
+      labels:
+        quality: quality
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.EpisodeFiles
+        events:
+          - insert
+          - update
+          - delete
+
+  - name: sonarr_episode_file_bytes
+    help: Total size of episode files on disk by quality
+    type: gauge
+    source: sonarr
+    query:
+      sql: |
+        SELECT COALESCE(q."Title", 'unknown') AS quality, SUM(f."Size") AS value
+        FROM "EpisodeFiles" f
+        LEFT JOIN "QualityDefinitions" q
+          ON q."Quality" = (f."Quality"::json ->> 'quality')::int
+        GROUP BY 1
+    mapping:
+      value: value
+      labels:
+        quality: quality
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.EpisodeFiles
+        events:
+          - insert
+          - update
+          - delete
+
+  # A gauge, not a counter: housekeeping deletes history for removed series, so
+  # the table is not monotonic. Rows age out of the window without a write.
+  - name: sonarr_history_events_24h
+    help: Sonarr history events recorded in the last 24 hours by event type
+    type: gauge
+    source: sonarr
+    query:
+      sql: |
+        SELECT
+          CASE "EventType"
+            WHEN 1 THEN 'grabbed'
+            WHEN 2 THEN 'series_folder_imported'
+            WHEN 3 THEN 'download_folder_imported'
+            WHEN 4 THEN 'download_failed'
+            WHEN 5 THEN 'episode_file_deleted'
+            WHEN 6 THEN 'episode_file_renamed'
+            WHEN 7 THEN 'download_ignored'
+            ELSE 'unknown'
+          END AS event,
+          COUNT(*) AS value
+        FROM "History"
+        WHERE "Date" >= (now() AT TIME ZONE 'UTC') - interval '24 hours'
+        GROUP BY 1
+    mapping:
+      value: value
+      labels:
+        event: event
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 5m
+      watch:
+        tables:
+          - public.History
+        events:
+          - insert
+          - delete
+
+  - name: sonarr_blocklist_items
+    help: Releases on the Sonarr blocklist
+    type: gauge
+    source: sonarr
+    query:
+      sql: SELECT COUNT(*) AS value FROM "Blocklist"
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.Blocklist
+        events:
+          - insert
+          - delete
+
+  # Releases held back by a delay profile, waiting to be grabbed.
+  - name: sonarr_pending_releases
+    help: Releases Sonarr is holding for a delay profile
+    type: gauge
+    source: sonarr
+    query:
+      sql: SELECT COUNT(*) AS value FROM "PendingReleases"
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_sonarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.PendingReleases
+        events:
+          - insert
+          - delete
