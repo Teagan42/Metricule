@@ -124,10 +124,11 @@ subscription, and is therefore never seen (§9.2).
 | Milestone | Scope | Status |
 |---|---|---|
 | M0 | Module, contracts, config, schema, CLI, CI | Complete |
-| M1 | Three adapters, gauge mapping, polling, exposition | Complete (v0.3.0) |
+| M1 | Three adapters, gauge mapping, polling, exposition | Complete |
 | M2 | Notifications, change tokens, debouncing, reconciliation | Complete |
 | M3 | Managed PostgreSQL triggers | Complete |
 | M4 | Failure injection, benchmarks, release hardening | Complete |
+| M5 | Future event semantics | Partial — see below |
 
 M1 adds the collection engine, mapping, snapshot store, exporter, and runtime wiring.
 M2 adds the watcher supervisor, PostgreSQL `LISTEN/NOTIFY`, SQLite `data_version`
@@ -138,8 +139,9 @@ M4 adds end-to-end failure injection, the measured benchmark baseline in
 [`performance.md`](performance.md), production-shaped Compose stacks under
 [`examples/compose`](../examples/compose/postgres/README.md), and the release-gate
 audit in [`release-readiness.md`](release-readiness.md). M5 begins with the MySQL
-adapter, `SIGHUP` configuration reload, and histograms from persisted cumulative
-buckets; the remaining M5 list is deferred.
+adapter, `SIGHUP` configuration reload, histograms from persisted cumulative buckets,
+and `api_key` authentication for HTTP sources that reject `Authorization`; the
+remaining M5 list is deferred.
 
 Known limitations, including several deliberate design limits, are recorded in
 [`limitations.md`](limitations.md).
