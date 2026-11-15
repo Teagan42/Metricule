@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/Teagan42/Metricule/compare/v0.9.0...v0.9.1) (2026-11-15)
+
+
+### Documentation
+
+* **examples:** add sonarr and radarr examples driven by postgres triggers ([#46](https://github.com/Teagan42/Metricule/issues/46)) ([b559624](https://github.com/Teagan42/Metricule/commit/b55962497210306dfde63b0961baf4fb8e927be6))
+
 ## [0.9.0](https://github.com/Teagan42/Metricule/compare/v0.8.0...v0.9.0) (2026-11-07)
 
 
