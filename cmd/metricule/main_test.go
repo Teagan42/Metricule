@@ -251,6 +251,33 @@ metrics:
 	}
 }
 
+// Repeated --config values and directories merge into one configuration.
+func TestValidateMergesRepeatedConfigFlags(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.yaml")
+	if err := os.WriteFile(base, []byte("apiVersion: metricule.io/v1alpha1\nkind: Exporter\nserver:\n  listen: \":9191\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	services := filepath.Join(dir, "services")
+	if err := os.Mkdir(services, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(services, "app.yaml"), []byte(validConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := run(t, "validate", "--config", base, "--config", services, "--print-config")
+	if got.code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", got.code, got.stderr)
+	}
+	if !strings.Contains(got.stdout, "listen: :9191") || !strings.Contains(got.stdout, "app_users") {
+		t.Errorf("printed config should be the merged document, got:\n%s", got.stdout)
+	}
+	if !strings.Contains(got.stdout, "1 source(s), 1 metric(s)") {
+		t.Errorf("summary missing, got:\n%s", got.stdout)
+	}
+}
+
 func TestValidateReportsMissingFile(t *testing.T) {
 	got := run(t, "validate", "--config", filepath.Join(t.TempDir(), "absent.yaml"))
 	if got.code == 0 {

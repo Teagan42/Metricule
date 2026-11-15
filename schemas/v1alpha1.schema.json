@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://metricule.io/schemas/v1alpha1.schema.json",
   "title": "Metricule Exporter configuration",
-  "description": "Declarative configuration for the Metricule metrics sidecar. Structural validation only: cross-field and adapter-capability rules are enforced by `metricule validate`.",
+  "description": "Declarative configuration for the Metricule metrics sidecar. Describes one file; several files may merge into one configuration, so `sources` and `metrics` are required only across the merged set. Structural validation only: cross-field and adapter-capability rules are enforced by `metricule validate`.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "sources", "metrics"],
+  "required": ["apiVersion", "kind"],
   "properties": {
     "apiVersion": { "const": "metricule.io/v1alpha1" },
     "kind": { "const": "Exporter" },

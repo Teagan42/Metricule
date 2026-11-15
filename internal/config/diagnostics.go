@@ -111,12 +111,22 @@ func (e validationError) Diagnostics() Diagnostics { return e.ds }
 
 type collector struct {
 	ds Diagnostics
+	// locate rewrites a merged path to name its file. Nil leaves paths unchanged.
+	locate func(string) string
+}
+
+// Returns the path as reported to the operator.
+func (c *collector) at(path string) string {
+	if c.locate == nil {
+		return path
+	}
+	return c.locate(path)
 }
 
 func (c *collector) errorf(path, format string, args ...any) {
-	c.ds = append(c.ds, Diagnostic{SeverityError, path, fmt.Sprintf(format, args...)})
+	c.ds = append(c.ds, Diagnostic{SeverityError, c.at(path), fmt.Sprintf(format, args...)})
 }
 
 func (c *collector) warnf(path, format string, args ...any) {
-	c.ds = append(c.ds, Diagnostic{SeverityWarning, path, fmt.Sprintf(format, args...)})
+	c.ds = append(c.ds, Diagnostic{SeverityWarning, c.at(path), fmt.Sprintf(format, args...)})
 }

@@ -1,6 +1,7 @@
 # Configuration reference
 
-Metricule is configured by a single YAML document. The format is a versioned public
+Metricule is configured by YAML documents, in one file or
+[split across several](#splitting-configuration-across-files). The format is a versioned public
 interface: **unknown keys are rejected**, not ignored, so a typo fails validation
 instead of silently disabling a metric.
 
@@ -39,8 +40,8 @@ kind: Exporter                      # required
 metadata: {}                        # optional, informational
 server: {}                          # optional, defaulted
 defaults: {}                        # optional, defaulted
-sources: {}                         # required, at least one
-metrics: []                         # required, at least one
+sources: {}                         # required, at least one across all files
+metrics: []                         # required, at least one across all files
 ```
 
 | Field | Type | Required | Default | Description |
@@ -55,6 +56,49 @@ metrics: []                         # required, at least one
 
 A file may contain exactly one YAML document. A second document would be silently
 ignored, hiding half the configuration, so it is refused.
+
+## Splitting configuration across files
+
+`--config` accepts a file or a directory, and may be repeated. Every command that
+takes `--config` (`serve`, `validate`, `test`, `triggers`) accepts the same forms:
+
+```sh
+metricule serve --config /etc/metricule/conf.d
+metricule serve --config base.yaml --config services/
+```
+
+The resolved files merge into one configuration, which is then defaulted and
+validated as a whole:
+
+| Rule | Detail |
+|---|---|
+| Directory contents | Top-level `*.yaml` and `*.yml` files, in name order. Subdirectories, other extensions, and hidden entries (names starting with `.`) are ignored, so a Kubernetes ConfigMap mount loads correctly. A directory with no matching file is an error. |
+| Load order | Arguments in the order given; within a directory, by file name. Order only affects the order of `metrics`. |
+| Header | Every file must declare `apiVersion` and `kind`. A stray YAML file therefore fails loudly instead of being merged. |
+| `sources` | Merged by name. The same source name in two files is an error naming both files. |
+| `metrics` | Concatenated. A metric name used in two files is rejected, as it is within one file. |
+| `metadata`, `server`, `defaults` | Each may appear in at most one file, and applies to every file. Declaring one in two files is an error rather than a field-by-field merge. |
+| Duplicated paths | Naming the same file twice, directly or through a directory, is an error. |
+
+A typical layout keeps shared settings in one file and one file per service:
+
+```text
+conf.d/
+  00-base.yaml     # apiVersion, kind, server, defaults
+  sonarr.yaml      # apiVersion, kind, the sonarr source and its metrics
+  radarr.yaml      # apiVersion, kind, the radarr source and its metrics
+```
+
+Diagnostics name the file and the index within it:
+
+```text
+error: conf.d/radarr.yaml: metrics[0].name: duplicate metric name "queue_items", already declared by conf.d/sonarr.yaml: metrics[0]
+```
+
+A metric may reference a source declared in another file. `--print-config` prints the
+merged document. The JSON Schema describes a single file, so it requires only
+`apiVersion` and `kind`; "at least one source and one metric" is checked across the
+merged set by `metricule validate`. See [ADR 0013](adr/0013-multi-file-configuration.md).
 
 ### `metadata`
 
@@ -471,7 +515,8 @@ $ kill -HUP "$(pgrep -f 'metricule serve')"
 $ docker kill --signal=HUP metricule
 ```
 
-Reload re-reads the same `--config` path, resolves secrets again, compiles plans, and
+Reload re-reads the same `--config` paths, re-lists any directories (so a file added
+or removed takes effect), resolves secrets again, compiles plans, and
 opens the new sources before retiring the old generation. If anything fails —
 invalid YAML, a missing secret, an unrecognized key, an unreachable source — the
 running configuration keeps serving and the reason is logged. There is no partial
@@ -509,6 +554,7 @@ Detected classes (§5.5):
 | Class | Examples |
 |---|---|
 | Structure | unknown keys at any level, wrong YAML types, a second document, keys belonging to another source type |
+| Multiple files | a file without `apiVersion` or `kind`, a source name declared in two files, `metadata`, `server`, or `defaults` declared in two files, an empty config directory, a file listed twice |
 | Required fields | `apiVersion`, `kind`, at least one source, at least one metric, `name`, `help`, `type`, `source`, `mapping.value` |
 | Duplicates and conflicts | duplicate metric names, duplicate states, a label in both `labels` and `static_labels`, colliding server paths |
 | References | a metric naming an undeclared source, a request path outside `allowed_paths`, a source type with no adapter in this build |

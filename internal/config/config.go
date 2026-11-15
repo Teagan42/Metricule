@@ -30,6 +30,10 @@ type Config struct {
 	// explicit zero from an absent field. Unexported, so it never serializes and
 	// never appears in a redacted config dump.
 	present fieldSet
+
+	// origins maps merged paths back to their files, so diagnostics name the file
+	// to edit. Nil for a single-file configuration.
+	origins *origins
 }
 
 // Metadata describes the exporter deployment. Informational only.
