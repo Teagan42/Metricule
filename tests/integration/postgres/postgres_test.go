@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -798,5 +799,61 @@ func TestPostgresHealthReportsUnreachableTarget(t *testing.T) {
 	// Health keeps reporting the outage instead of wedging.
 	if err := s.Health(ctx); err == nil {
 		t.Error("Health reported up for a closed port")
+	}
+}
+
+// Successful reads commit; only failed reads roll back. Monitoring that alerts on
+// pg_stat_database's rollback ratio must not fire on a healthy exporter.
+func TestPostgresSuccessfulReadsCommit(t *testing.T) {
+	t.Parallel()
+	dsn := createDatabase(t, "commits", `CREATE TABLE jobs (id bigserial PRIMARY KEY)`)
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse dsn: %v", err)
+	}
+	db := strings.TrimPrefix(u.Path, "/")
+
+	const reads = 20
+	s := openSource(t, dsn, nil)
+	for range reads {
+		if _, err := query(context.Background(), t, s, `SELECT count(*) AS value FROM jobs`, 10); err != nil {
+			t.Fatalf("Query: %v", err)
+		}
+	}
+	if _, err := query(context.Background(), t, s, `SELECT 1 / 0 AS value`, 10); err == nil {
+		t.Fatal("division by zero succeeded")
+	}
+	// Backends flush pending statistics on exit, so closing makes the counters final.
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	var commits, rollbacks int64
+	err = waitFor(30*time.Second, func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		conn, err := pgx.Connect(ctx, sharedDSN(t, "commits_stats"))
+		if err != nil {
+			return err
+		}
+		defer conn.Close(ctx)
+		if err := conn.QueryRow(ctx,
+			`SELECT xact_commit, xact_rollback FROM pg_stat_database WHERE datname = $1`, db,
+		).Scan(&commits, &rollbacks); err != nil {
+			return err
+		}
+		if commits+rollbacks < reads+1 {
+			return fmt.Errorf("xact_commit = %d, xact_rollback = %d: statistics not flushed yet", commits, rollbacks)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read pg_stat_database: %v", err)
+	}
+	if commits < reads {
+		t.Errorf("xact_commit = %d, want at least %d (one per successful read)", commits, reads)
+	}
+	if rollbacks != 1 {
+		t.Errorf("xact_rollback = %d, want 1 (the failed read only)", rollbacks)
 	}
 }

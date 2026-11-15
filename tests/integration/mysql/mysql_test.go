@@ -310,3 +310,43 @@ func TestMySQLHealth(t *testing.T) {
 		t.Errorf("Health: %v", err)
 	}
 }
+
+// Successful reads commit; only failed reads roll back. Relies on this package's
+// tests running serially, since the status counters are server-wide.
+func TestMySQLSuccessfulReadsCommit(t *testing.T) {
+	dsn := sharedDSN(t)
+	s := openSource(t, dsn, nil)
+	status := func(name string) int64 {
+		t.Helper()
+		db, err := sql.Open("mysql", dsn)
+		if err != nil {
+			t.Fatalf("open admin: %v", err)
+		}
+		defer db.Close()
+		var key string
+		var value int64
+		if err := db.QueryRowContext(context.Background(), `SHOW GLOBAL STATUS LIKE '`+name+`'`).Scan(&key, &value); err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		return value
+	}
+	commitsBefore, rollbacksBefore := status("Com_commit"), status("Com_rollback")
+
+	const reads = 20
+	spec := compile(t, s, `SELECT 1 AS value`)
+	for range reads {
+		if _, err := query(t, s, spec, 10); err != nil {
+			t.Fatalf("Query: %v", err)
+		}
+	}
+	if _, err := query(t, s, compile(t, s, `SELECT * FROM no_such_table`), 10); err == nil {
+		t.Fatal("query on a missing table succeeded")
+	}
+
+	if got := status("Com_commit") - commitsBefore; got != reads {
+		t.Errorf("Com_commit grew by %d, want %d", got, reads)
+	}
+	if got := status("Com_rollback") - rollbacksBefore; got != 1 {
+		t.Errorf("Com_rollback grew by %d, want 1 (the failed read only)", got)
+	}
+}

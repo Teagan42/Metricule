@@ -73,7 +73,7 @@ Adapted from the implementation handoff, with the artifact or test that satisfie
 
 - Collection is read-only by enforcement, not by SQL inspection: PostgreSQL sessions
   force `default_transaction_read_only` and wrap each query in a read-only
-  transaction; SQLite opens with `mode=ro` and `_query_only=1`.
+  transaction that commits on success, so rollback counters track real failures; SQLite opens with `mode=ro` and `_query_only=1`.
 - Trigger provisioning is opt-in, uses a separate DSN, and only touches objects with
   its ownership marker.
 - Credentials resolve in `internal/runtime` only. Adapters, logs, errors, diagnostics,

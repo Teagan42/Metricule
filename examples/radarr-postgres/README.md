@@ -33,7 +33,9 @@ cardinality does not grow with the library.
 Two connections, two roles:
 
 - **`RADARR_DATABASE_URL`** — a role with `SELECT` only, used for every metric query.
-  Metricule also runs each query in a read-only transaction.
+  Metricule also runs each query in a read-only transaction. A successful query
+  commits and only a failed one rolls back, so `pg_stat_database` rollback-ratio
+  alerts track real failures.
 - **`RADARR_ADMIN_DATABASE_URL`** — the role that owns Radarr's tables, normally the
   user in Radarr's `config.xml`. Only a table owner can create a trigger on it.
   Metricule uses this connection once at startup to create the `metricule` schema,

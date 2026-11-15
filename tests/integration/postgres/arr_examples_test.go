@@ -91,8 +91,8 @@ INSERT INTO "History" ("MovieId", "EventType", "Date") VALUES
 INSERT INTO "Blocklist" ("MovieId", "SourceTitle") VALUES (2, 'Mickey.17.2025.TS');
 `
 
-// Creates a dedicated database so each app's same-named tables do not collide.
-func createArrDatabase(t *testing.T, appName, schema string) string {
+// Creates a dedicated database, so same-named tables and per-database stats stay isolated.
+func createDatabase(t *testing.T, appName, schema string) string {
 	t.Helper()
 	adminDSN := sharedDSN(t, appName)
 	db := appName + "_" + uniqueSuffix()
@@ -226,7 +226,7 @@ func TestArrPostgresExamples(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dsn := createArrDatabase(t, tc.name+"_main", tc.schema)
+			dsn := createDatabase(t, tc.name+"_main", tc.schema)
 			t.Setenv(tc.readEnv, dsn)
 			t.Setenv(tc.adminEnv, dsn)
 

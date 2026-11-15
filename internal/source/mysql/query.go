@@ -64,6 +64,9 @@ func httpOnlyFields(def source.QueryDefinition) []string {
 }
 
 // Query executes a compiled spec inside a read-only transaction.
+//
+// A successful read commits rather than rolls back so the server's rollback
+// counters count only real failures.
 func (s *Source) Query(ctx context.Context, req source.QueryRequest) (source.ResultSet, error) {
 	compiled, ok := req.Spec.(*spec)
 	if !ok {
@@ -129,6 +132,12 @@ func (s *Source) Query(ctx context.Context, req source.QueryRequest) (source.Res
 	}
 	if err := rows.Err(); err != nil {
 		return source.ResultSet{}, s.queryError(compiled, "read result", err)
+	}
+	if err := rows.Close(); err != nil {
+		return source.ResultSet{}, s.queryError(compiled, "close result", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return source.ResultSet{}, s.queryError(compiled, "commit read-only transaction", err)
 	}
 	return result, nil
 }
