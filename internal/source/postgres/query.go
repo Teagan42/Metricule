@@ -82,7 +82,8 @@ func httpOnlyFields(def source.QueryDefinition) []string {
 //
 // Read-only enforcement is the transaction and the connection role, never SQL text
 // inspection, which proves nothing (§14.5). Isolation is repeatable read so a
-// multi-statement aggregate reads one snapshot.
+// multi-statement aggregate reads one snapshot. A successful read commits rather
+// than rolls back so pg_stat_database.xact_rollback counts only real failures.
 func (s *Source) Query(ctx context.Context, req source.QueryRequest) (source.ResultSet, error) {
 	compiled, ok := req.Spec.(*spec)
 	if !ok {
@@ -152,6 +153,11 @@ func (s *Source) Query(ctx context.Context, req source.QueryRequest) (source.Res
 	}
 	if err := rows.Err(); err != nil {
 		return source.ResultSet{}, s.queryError(compiled, "read result", err)
+	}
+	// The connection stays busy until the result set is closed; Commit needs it free.
+	rows.Close()
+	if err := tx.Commit(ctx); err != nil {
+		return source.ResultSet{}, s.queryError(compiled, "commit read-only transaction", err)
 	}
 	return result, nil
 }
