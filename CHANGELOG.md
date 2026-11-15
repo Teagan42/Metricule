@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/Teagan42/Metricule/compare/v0.9.1...v0.10.0) (2026-11-15)
+
+
+### Features
+
+* **config:** load configuration from multiple files and directories ([#48](https://github.com/Teagan42/Metricule/issues/48)) ([2f18a5c](https://github.com/Teagan42/Metricule/commit/2f18a5c9676482e9b5198dcf297bc9fddb5ac119))
+
+
+### Documentation
+
+* correct status claims left behind by M1 through M5 ([#45](https://github.com/Teagan42/Metricule/issues/45)) ([3377843](https://github.com/Teagan42/Metricule/commit/3377843b9e47f778e793a1427666e66c06905259))
+
 ## [0.9.1](https://github.com/Teagan42/Metricule/compare/v0.9.0...v0.9.1) (2026-11-15)
 
 
