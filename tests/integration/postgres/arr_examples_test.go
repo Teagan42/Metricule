@@ -26,11 +26,11 @@ CREATE TABLE "QualityDefinitions" ("Id" serial PRIMARY KEY, "Quality" integer NO
 CREATE TABLE "Series" ("Id" serial PRIMARY KEY, "Title" text NOT NULL, "Status" integer NOT NULL, "Monitored" boolean NOT NULL);
 CREATE TABLE "Episodes" (
 	"Id" serial PRIMARY KEY, "SeriesId" integer NOT NULL, "SeasonNumber" integer NOT NULL,
-	"EpisodeNumber" integer NOT NULL, "AirDateUtc" timestamp, "Monitored" boolean NOT NULL,
+	"EpisodeNumber" integer NOT NULL, "AirDateUtc" timestamptz, "Monitored" boolean NOT NULL,
 	"EpisodeFileId" integer NOT NULL DEFAULT 0
 );
 CREATE TABLE "EpisodeFiles" ("Id" serial PRIMARY KEY, "SeriesId" integer NOT NULL, "Size" bigint NOT NULL, "Quality" text NOT NULL);
-CREATE TABLE "History" ("Id" serial PRIMARY KEY, "EpisodeId" integer NOT NULL, "EventType" integer, "Date" timestamp NOT NULL);
+CREATE TABLE "History" ("Id" serial PRIMARY KEY, "EpisodeId" integer NOT NULL, "EventType" integer, "Date" timestamptz NOT NULL);
 CREATE TABLE "Blocklist" ("Id" serial PRIMARY KEY, "SeriesId" integer NOT NULL, "SourceTitle" text NOT NULL);
 CREATE TABLE "PendingReleases" ("Id" serial PRIMARY KEY, "SeriesId" integer NOT NULL, "Title" text NOT NULL);
 
@@ -67,7 +67,7 @@ CREATE TABLE "Movies" (
 	"MovieFileId" integer NOT NULL DEFAULT 0, "MinimumAvailability" integer NOT NULL
 );
 CREATE TABLE "MovieFiles" ("Id" serial PRIMARY KEY, "MovieId" integer NOT NULL, "Size" bigint NOT NULL, "Quality" text NOT NULL);
-CREATE TABLE "History" ("Id" serial PRIMARY KEY, "MovieId" integer NOT NULL, "EventType" integer, "Date" timestamp NOT NULL);
+CREATE TABLE "History" ("Id" serial PRIMARY KEY, "MovieId" integer NOT NULL, "EventType" integer, "Date" timestamptz NOT NULL);
 CREATE TABLE "Blocklist" ("Id" serial PRIMARY KEY, "MovieId" integer NOT NULL, "SourceTitle" text NOT NULL);
 CREATE TABLE "PendingReleases" ("Id" serial PRIMARY KEY, "MovieId" integer NOT NULL, "Title" text NOT NULL);
 

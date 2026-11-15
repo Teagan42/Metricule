@@ -189,7 +189,7 @@ metrics:
           END AS event,
           COUNT(*) AS value
         FROM "History"
-        WHERE "Date" >= (now() AT TIME ZONE 'UTC') - interval '24 hours'
+        WHERE "Date" >= now() - interval '24 hours'
         GROUP BY 1
     mapping:
       value: value
