@@ -1,0 +1,246 @@
+# Radarr: library metrics read from Radarr's PostgreSQL database and refreshed
+# by managed LISTEN/NOTIFY triggers instead of polling the API.
+#
+# Radarr v4+ keeps its library in PostgreSQL when configured to. Its tables use
+# quoted PascalCase identifiers, so every name below is double-quoted in SQL.
+# The download queue, health checks, and disk space live in Radarr's memory,
+# not the database; use examples/radarr for those.
+apiVersion: metricule.io/v1alpha1
+kind: Exporter
+
+metadata:
+  name: radarr-postgres
+  description: Radarr library, wanted, history, and blocklist metrics from PostgreSQL
+
+server:
+  listen: "0.0.0.0:9712"
+
+defaults:
+  collection:
+    interval: 60s
+    timeout: 10s
+    # Library refreshes rewrite movies one statement at a time; collapse the burst.
+    debounce: 2s
+    reconcile_interval: 5m
+  limits:
+    max_series_per_metric: 200
+    max_rows_per_query: 1000
+    max_concurrent_collections: 2
+  failure:
+    mode: retain
+    max_stale_age: 15m
+
+sources:
+  radarr:
+    type: postgres
+    # A SELECT-only role on the radarr-main database.
+    dsn:
+      env: RADARR_DATABASE_URL
+    pool:
+      max_open: 2
+      max_idle: 1
+    query_timeout: 10s
+    triggers:
+      manage: true
+      schema: metricule
+      cleanup_on_shutdown: false
+      # Radarr's own database user owns the tables, so only it can add triggers.
+      dsn:
+        env: RADARR_ADMIN_DATABASE_URL
+
+# Every metric shares one channel. Metricule installs one statement-level
+# trigger per watched table, and the payload names the table, so a write
+# refreshes only the metrics that watch it.
+metrics:
+  # Title, year, and status live on MovieMetadata; Movies holds library state.
+  - name: radarr_movies
+    help: Movies in the Radarr library by release status and monitoring
+    type: gauge
+    source: radarr
+    query:
+      sql: |
+        SELECT
+          CASE mm."Status"
+            WHEN 0 THEN 'tba'
+            WHEN 1 THEN 'announced'
+            WHEN 2 THEN 'in_cinemas'
+            WHEN 3 THEN 'released'
+            WHEN -1 THEN 'deleted'
+            ELSE 'unknown'
+          END AS status,
+          CASE WHEN m."Monitored" THEN 'true' ELSE 'false' END AS monitored,
+          COUNT(*) AS value
+        FROM "Movies" m
+        JOIN "MovieMetadata" mm ON mm."Id" = m."MovieMetadataId"
+        GROUP BY 1, 2
+    mapping:
+      value: value
+      labels:
+        status: status
+        monitored: monitored
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.Movies
+          - public.MovieMetadata
+
+  # Monitored, no file, and at or past the movie's minimum availability. Both
+  # columns share Radarr's MovieStatusType numbering, so they compare directly.
+  - name: radarr_wanted_missing_movies
+    help: Monitored, available movies that have no file
+    type: gauge
+    source: radarr
+    query:
+      sql: |
+        SELECT COUNT(*) AS value
+        FROM "Movies" m
+        JOIN "MovieMetadata" mm ON mm."Id" = m."MovieMetadataId"
+        WHERE m."Monitored"
+          AND m."MovieFileId" = 0
+          AND mm."Status" >= m."MinimumAvailability"
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.Movies
+          - public.MovieMetadata
+
+  # Quality is a JSON document whose "quality" key is a QualityDefinitions id.
+  # Quality titles are a fixed set, so the label stays bounded.
+  - name: radarr_movie_files
+    help: Movie files on disk by quality
+    type: gauge
+    source: radarr
+    query:
+      sql: |
+        SELECT COALESCE(q."Title", 'unknown') AS quality, COUNT(*) AS value
+        FROM "MovieFiles" f
+        LEFT JOIN "QualityDefinitions" q
+          ON q."Quality" = (f."Quality"::json ->> 'quality')::int
+        GROUP BY 1
+    mapping:
+      value: value
+      labels:
+        quality: quality
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.MovieFiles
+        events:
+          - insert
+          - update
+          - delete
+
+  - name: radarr_movie_file_bytes
+    help: Total size of movie files on disk by quality
+    type: gauge
+    source: radarr
+    query:
+      sql: |
+        SELECT COALESCE(q."Title", 'unknown') AS quality, SUM(f."Size") AS value
+        FROM "MovieFiles" f
+        LEFT JOIN "QualityDefinitions" q
+          ON q."Quality" = (f."Quality"::json ->> 'quality')::int
+        GROUP BY 1
+    mapping:
+      value: value
+      labels:
+        quality: quality
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.MovieFiles
+        events:
+          - insert
+          - update
+          - delete
+
+  # A gauge, not a counter: housekeeping deletes history for removed movies, so
+  # the table is not monotonic. Rows age out of the window without a write.
+  - name: radarr_history_events_24h
+    help: Radarr history events recorded in the last 24 hours by event type
+    type: gauge
+    source: radarr
+    query:
+      sql: |
+        SELECT
+          CASE "EventType"
+            WHEN 1 THEN 'grabbed'
+            WHEN 3 THEN 'download_folder_imported'
+            WHEN 4 THEN 'download_failed'
+            WHEN 6 THEN 'movie_file_deleted'
+            WHEN 7 THEN 'movie_folder_imported'
+            WHEN 8 THEN 'movie_file_renamed'
+            WHEN 9 THEN 'download_ignored'
+            ELSE 'unknown'
+          END AS event,
+          COUNT(*) AS value
+        FROM "History"
+        WHERE "Date" >= now() - interval '24 hours'
+        GROUP BY 1
+    mapping:
+      value: value
+      labels:
+        event: event
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 5m
+      watch:
+        tables:
+          - public.History
+        events:
+          - insert
+          - delete
+
+  - name: radarr_blocklist_items
+    help: Releases on the Radarr blocklist
+    type: gauge
+    source: radarr
+    query:
+      sql: SELECT COUNT(*) AS value FROM "Blocklist"
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.Blocklist
+        events:
+          - insert
+          - delete
+
+  # Releases held back by a delay profile, waiting to be grabbed.
+  - name: radarr_pending_releases
+    help: Releases Radarr is holding for a delay profile
+    type: gauge
+    source: radarr
+    query:
+      sql: SELECT COUNT(*) AS value FROM "PendingReleases"
+    mapping:
+      value: value
+    collect:
+      mode: notify
+      channel: metricule_radarr_changed
+      fallback_interval: 15m
+      watch:
+        tables:
+          - public.PendingReleases
+        events:
+          - insert
+          - delete

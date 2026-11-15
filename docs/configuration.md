@@ -543,6 +543,8 @@ Validated in CI by `make validate-examples`, which runs `metricule validate` ove
 | [`examples/histogram/metricule.yaml`](../examples/histogram/metricule.yaml) | Persisted cumulative buckets exposed as a Prometheus histogram |
 | [`examples/sonarr/metricule.yaml`](../examples/sonarr/metricule.yaml) | `api_key` authentication, nested selectors, a Varken replacement ([notes](../examples/sonarr/README.md)) |
 | [`examples/radarr/metricule.yaml`](../examples/radarr/metricule.yaml) | `api_key` authentication, nested selectors, a Varken replacement ([notes](../examples/radarr/README.md)) |
+| [`examples/sonarr-postgres/metricule.yaml`](../examples/sonarr-postgres/metricule.yaml) | Sonarr's PostgreSQL database, quoted identifiers, managed triggers on another application's tables, one shared channel ([notes](../examples/sonarr-postgres/README.md)) |
+| [`examples/radarr-postgres/metricule.yaml`](../examples/radarr-postgres/metricule.yaml) | Radarr's PostgreSQL database, quoted identifiers, managed triggers on another application's tables, one shared channel ([notes](../examples/radarr-postgres/README.md)) |
 
 `schemas/testdata/` holds the fixtures behind the schema parity tests, split into
 `valid`, `invalid-structural`, and `invalid-semantic`.
