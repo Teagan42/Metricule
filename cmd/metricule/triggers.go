@@ -25,16 +25,16 @@ func runTriggers(stdout, stderr io.Writer, args []string) error {
 	}
 
 	fs := flags("triggers "+op, stderr)
-	path := fs.String("config", "", "path to the configuration file")
+	paths := configFlag(fs)
 	source := fs.String("source", "", "limit the operation to one source")
 	if err := fs.Parse(args[1:]); err != nil {
 		return errUsage
 	}
-	if *path == "" {
+	if len(*paths) == 0 {
 		return fmt.Errorf("%w: --config is required", errUsage)
 	}
 
-	cfg, ds, err := config.Load(*path)
+	cfg, ds, err := config.Load(*paths...)
 	for _, d := range ds.Warnings() {
 		fmt.Fprintf(stderr, "warning: %s: %s\n", d.Path, d.Message)
 	}

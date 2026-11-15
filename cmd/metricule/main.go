@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,7 +45,7 @@ type command struct {
 func commands() []command {
 	return []command{
 		{"serve", "Run the exporter", runServe},
-		{"validate", "Validate a configuration file", runValidate},
+		{"validate", "Validate configuration offline", runValidate},
 		{"test", "Execute one metric's collection and print the result", runTest},
 		{"triggers", "Manage PostgreSQL notification triggers", runTriggers},
 		{"config", "Print the configuration JSON Schema", runConfig},
@@ -100,6 +101,26 @@ func flags(name string, stderr io.Writer) *flag.FlagSet {
 	return fs
 }
 
+// configPaths collects repeated --config values, each a file or a directory.
+type configPaths []string
+
+func (c *configPaths) String() string { return strings.Join(*c, ",") }
+
+func (c *configPaths) Set(v string) error {
+	if v == "" {
+		return errors.New("path is empty")
+	}
+	*c = append(*c, v)
+	return nil
+}
+
+// Registers the shared --config flag.
+func configFlag(fs *flag.FlagSet) *configPaths {
+	var paths configPaths
+	fs.Var(&paths, "config", "configuration file or directory; repeat to merge several")
+	return &paths
+}
+
 func runVersion(stdout, stderr io.Writer, args []string) error {
 	fs := flags("version", stderr)
 	if err := fs.Parse(args); err != nil {
@@ -126,17 +147,17 @@ func runConfig(stdout, stderr io.Writer, args []string) error {
 
 func runValidate(stdout, stderr io.Writer, args []string) error {
 	fs := flags("validate", stderr)
-	path := fs.String("config", "", "path to the configuration file")
+	paths := configFlag(fs)
 	online := fs.Bool("online", false, "additionally connect to each source and check queries")
 	printConfig := fs.Bool("print-config", false, "print the effective configuration with secrets redacted")
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
-	if *path == "" {
+	if len(*paths) == 0 {
 		return fmt.Errorf("%w: --config is required", errUsage)
 	}
 
-	cfg, ds, err := config.Load(*path)
+	cfg, ds, err := config.Load(*paths...)
 	for _, d := range ds.Warnings() {
 		fmt.Fprintf(stderr, "warning: %s: %s\n", d.Path, d.Message)
 	}
@@ -160,7 +181,7 @@ func runValidate(stdout, stderr io.Writer, args []string) error {
 		}
 	}
 
-	fmt.Fprintf(stdout, "%s is valid: %d source(s), %d metric(s)\n", *path, len(cfg.Sources), len(cfg.Metrics))
+	fmt.Fprintf(stdout, "%s is valid: %d source(s), %d metric(s)\n", paths, len(cfg.Sources), len(cfg.Metrics))
 	return nil
 }
 
@@ -190,15 +211,15 @@ const onlineProbeTimeout = 15 * time.Second
 
 func runServe(stdout, stderr io.Writer, args []string) error {
 	fs := flags("serve", stderr)
-	path := fs.String("config", "", "path to the configuration file")
+	paths := configFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
-	if *path == "" {
+	if len(*paths) == 0 {
 		return fmt.Errorf("%w: --config is required", errUsage)
 	}
 
-	cfg, ds, err := config.Load(*path)
+	cfg, ds, err := config.Load(*paths...)
 	for _, d := range ds.Warnings() {
 		fmt.Fprintf(stderr, "warning: %s: %s\n", d.Path, d.Message)
 	}
@@ -235,7 +256,7 @@ func runServe(stdout, stderr io.Writer, args []string) error {
 			case <-ctx.Done():
 				return
 			case <-hup:
-				next, ds, err := config.Load(*path)
+				next, ds, err := config.Load(*paths...)
 				for _, d := range ds.Warnings() {
 					log.Warn("reload configuration warning", "path", d.Path, "message", d.Message)
 				}
@@ -264,19 +285,19 @@ func logger(stderr io.Writer) *slog.Logger {
 
 func runTest(stdout, stderr io.Writer, args []string) error {
 	fs := flags("test", stderr)
-	path := fs.String("config", "", "path to the configuration file")
+	paths := configFlag(fs)
 	metric := fs.String("metric", "", "name of the metric to collect once")
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
-	if *path == "" {
+	if len(*paths) == 0 {
 		return fmt.Errorf("%w: --config is required", errUsage)
 	}
 	if *metric == "" {
 		return fmt.Errorf("%w: --metric is required", errUsage)
 	}
 
-	cfg, _, err := config.Load(*path)
+	cfg, _, err := config.Load(*paths...)
 	if err != nil {
 		return err
 	}

@@ -38,7 +38,7 @@ type CapabilityFunc func(sourceType string) (source.Capabilities, bool)
 // Pass nil caps to skip adapter capability checks; callers that serve traffic must
 // pass source.CapabilitiesFor so unsupported collection modes are rejected.
 func Validate(c *Config, caps CapabilityFunc) Diagnostics {
-	v := &collector{}
+	v := &collector{locate: c.origins.locate}
 
 	validateHeader(v, c)
 	validateServer(v, c)
@@ -342,7 +342,7 @@ func validateMetricName(v *collector, path string, m *Metric, seen map[string]in
 		v.errorf(path+".name", "prefix %q is reserved for Metricule's own telemetry", TelemetryPrefix)
 	}
 	if prev, dup := seen[m.Name]; dup {
-		v.errorf(path+".name", "duplicate metric name %q, already declared by metrics[%d]", m.Name, prev)
+		v.errorf(path+".name", "duplicate metric name %q, already declared by %s", m.Name, v.at(fmt.Sprintf("metrics[%d]", prev)))
 	} else {
 		seen[m.Name] = idx
 	}

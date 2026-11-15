@@ -1,6 +1,14 @@
 apiVersion: metricule.io/v1alpha1
-kind: Exporter
 sources:
   db:
     type: sqlite
     path: /data/app.db
+metrics:
+  - name: app_users
+    help: Users.
+    type: gauge
+    source: db
+    query:
+      sql: SELECT count(*) AS value FROM users
+    mapping:
+      value: value

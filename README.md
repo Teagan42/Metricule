@@ -156,6 +156,11 @@ Metricule a read-only database role.
 | `metricule validate --config PATH --online` | Also check source reachability |
 | `metricule test --config PATH --metric NAME` | Run one collection and print the result |
 | `metricule config schema` | Print the configuration JSON Schema |
+
+`PATH` is a file or a directory of `*.yaml` files, and `--config` may be repeated to
+split configuration across files. See
+[Splitting configuration across files](docs/configuration.md#splitting-configuration-across-files).
+
 | `metricule version` | Print build information |
 
 Exit codes: `0` success, `1` runtime failure, `2` usage error.
